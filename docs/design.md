@@ -1,6 +1,6 @@
 # Design
 
-This page explains how durchblick-tapnext adds points to a tracker that is already working, why it needs a
+This page explains how xblick-tapnext adds points to a tracker that is already working, why it needs a
 catch-up for late masks, and which rules its code follows. It also lists the tests.
 
 ## The model
@@ -39,7 +39,7 @@ in the median. [docs/performance.md](performance.md#accuracy-against-ground-trut
 
 ## Late masks and the catch-up
 
-A result of durchblick-sam3 arrives some frames after its colour frame. A point must be queried in the frame in
+A result of xblick-sam3 arrives some frames after its colour frame. A point must be queried in the frame in
 which it lies on the object.
 
 ```mermaid
@@ -59,7 +59,7 @@ the frame is older than the kept frames. The node counts such results as `seeds_
 
 ## Objects that change their id
 
-durchblick-sam3 often gives an object a new id. In 30 s of replay it gave the objects of one desk about 200 ids.
+xblick-sam3 often gives an object a new id. In 30 s of replay it gave the objects of one desk about 200 ids.
 The node therefore lets a new id adopt existing tracks. It takes the tracks of objects that are absent from a
 result (`Tracks.orphans`). If such a track lies inside the mask of a new id, that id adopts it (`Tracks.adopt`).
 
@@ -82,7 +82,7 @@ camera.
 ## Stamps only grow
 
 The node processes only colour frames that are newer than the last tracked frame. It skips and counts older
-frames. A looped playback must therefore shift its stamps, which `blick play --loop` does.
+frames. A looped playback must therefore shift its stamps, which `xblick play --loop` does.
 
 A change of the colour camera's image size, frame id or camera model resets all tracks.
 
@@ -120,5 +120,5 @@ tapnet package, and it copies nothing from tapnet.
 ## Status and limits
 
 - Version 0.1.0, status of 2026-11-02. We tested the node on TUM RGB-D with ground truth and end to end with
-  durchblick-sam3 on a replayed RGB-D sequence. We have not tested it on a robot.
+  xblick-sam3 on a replayed RGB-D sequence. We have not tested it on a robot.
 - The node needs a Durchblick version that supports empty point clouds. Durchblick 0.3.25 added them.

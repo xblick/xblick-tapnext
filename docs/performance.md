@@ -1,6 +1,6 @@
 # Performance
 
-This page states how fast and how accurate durchblick-tapnext is, and how we measured both. The
+This page states how fast and how accurate xblick-tapnext is, and how we measured both. The
 [README](../README.md) has the short version.
 
 ## Speed
@@ -65,10 +65,10 @@ values: the slot state of the node, then a state per group.
 - The truth itself has an error of about one or two pixels, from depth noise and pose timing.
 - The checkpoint 512 gains nothing at 640 x 480. The default is therefore 256.
 
-## End to end with durchblick-sam3
+## End to end with xblick-sam3
 
 **Setup (2026-11-02).** We replayed the first 900 frames of the same sequence at 30 Hz as the camera
-`robot/camera`, with `color` and `depth_to_color`. durchblick-sam3 used the words keyboard, cup, book,
+`robot/camera`, with `color` and `depth_to_color`. xblick-sam3 used the words keyboard, cup, book,
 monitor and teddy bear. Both nodes worked on one RTX PRO 6000 without compilation. They read the camera on the same
 host from the host ring.
 
@@ -90,13 +90,13 @@ The distance contains the drift of the tracker, the noise of the depth and the s
 | --- | --- |
 | Frames tracked | 643 of 900 |
 | Rate of the node | 18-27 frames per second |
-| Rate of durchblick-sam3 | 15 frames per second |
+| Rate of xblick-sam3 | 15 frames per second |
 | Time per frame | 19-40 ms |
 | Catch-ups of new points | up to 0.3 s per second |
 | Tracks at a time | up to 1024, of about 17 objects |
 | Visible tracks | a third |
 
-In this scene a hand-held camera passes a cluttered desk. durchblick-sam3 gave the objects of one desk about
+In this scene a hand-held camera passes a cluttered desk. xblick-sam3 gave the objects of one desk about
 200 ids over the 30 s. 788 tracks moved to the new id of their object. 182 hidden tracks ended to make room for new
 points.
 
@@ -108,4 +108,4 @@ Points given by hand through the queryable got track ids, and the node followed 
 - The end-to-end numbers are without `--compile`.
 - We measured accuracy only at 640 x 480.
 
-[Making a node fast](https://github.com/xblick/durchblick/blob/main/docs/guides/making-a-node-fast.md) compares these findings with Durchblick's other nodes.
+[Making a node fast](https://github.com/xblick/xblick/blob/main/docs/guides/making-a-node-fast.md) compares these findings with Durchblick's other nodes.

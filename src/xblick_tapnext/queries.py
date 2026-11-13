@@ -1,8 +1,8 @@
-"""durchblick-tapnext-queries: asks or tells a running durchblick-tapnext over its queryable
+"""xblick-tapnext-queries: asks or tells a running xblick-tapnext over its queryable
 ``<camera>/<node>/queries``.
 
-    durchblick-tapnext-queries --camera robot/camera                        # the node's state
-    durchblick-tapnext-queries --camera robot/camera --json '{"points": [[320, 240]]}'
+    xblick-tapnext-queries --camera robot/camera                        # the node's state
+    xblick-tapnext-queries --camera robot/camera --json '{"points": [[320, 240]]}'
                                [--node tapnext] [--timeout 10] [--connect ...] [--listen ...] [--config FILE]
 
 A query without payload is answered with the node's state; one with a JSON payload is one of::
@@ -55,10 +55,10 @@ def parse(request) -> dict:
 
 
 def main(argv=None) -> int:
-    from blick import topics  # noqa: PLC0415
-    from blick.session import add_arguments, open_from_args  # noqa: PLC0415
+    from xblick import topics  # noqa: PLC0415
+    from xblick.session import add_arguments, open_from_args  # noqa: PLC0415
 
-    parser = argparse.ArgumentParser(prog="durchblick-tapnext-queries", description=__doc__,
+    parser = argparse.ArgumentParser(prog="xblick-tapnext-queries", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--camera", required=True, help="the camera's base, e.g. robot/camera")
     parser.add_argument("--node", default="tapnext", help="the node's part of the topic: <camera>/<node>/queries")
@@ -83,14 +83,14 @@ def main(argv=None) -> int:
     finally:
         session.close()
     if not replies:
-        print(f"durchblick-tapnext-queries: no answer on {key} within {args.timeout} s", file=sys.stderr)
+        print(f"xblick-tapnext-queries: no answer on {key} within {args.timeout} s", file=sys.stderr)
         return 1
     failed = False
     for reply in replies:
         if reply.ok is not None:
             print(reply.ok.payload.to_string())
         else:
-            print(f"durchblick-tapnext-queries: {reply.err.payload.to_string()}", file=sys.stderr)
+            print(f"xblick-tapnext-queries: {reply.err.payload.to_string()}", file=sys.stderr)
             failed = True
     return 1 if failed else 0
 

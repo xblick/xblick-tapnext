@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 import torch
 
-from durchblick_tapnext.lifting import Lifter
-from durchblick_tapnext.node import FIELDS, POINT_STEP, cloud
-from durchblick_tapnext.queries import parse
-from durchblick_tapnext.seeding import grow, sample, shrink
-from durchblick_tapnext.tracks import DRIFT_RESULTS, Tracks
+from xblick_tapnext.lifting import Lifter
+from xblick_tapnext.node import FIELDS, POINT_STEP, cloud
+from xblick_tapnext.queries import parse
+from xblick_tapnext.seeding import grow, sample, shrink
+from xblick_tapnext.tracks import DRIFT_RESULTS, Tracks
 
 S = 1_000_000_000  # a second in ns
 
@@ -118,7 +118,7 @@ def test_new_points_lie_inside_the_mask_spread_and_away_from_existing_ones():
 
 
 def test_lifting_inverts_the_projection_with_and_without_distortion():
-    from blick import CameraInfo
+    from xblick import CameraInfo
 
     for d, model in (([], ""), ([0.1, -0.05, 0.001, 0.002, 0.0], "plumb_bob")):
         info = CameraInfo.pinhole(640, 480, 500.0, 510.0, 319.5, 239.5, frame_id="c")
@@ -149,7 +149,7 @@ def test_requests_parse_and_bad_ones_say_why():
 
 
 def test_the_cloud_has_the_documented_layout():
-    from blick.points import points_dtype
+    from xblick.points import points_dtype
 
     xyz = np.array([[0.1, 0.2, 0.3], [np.nan, np.nan, np.nan]])
     points = cloud(xyz, np.array([[1.5, 2.5], [3.0, 4.0]]), np.array([7, 9], np.uint32), np.array([3, 0], np.uint16),

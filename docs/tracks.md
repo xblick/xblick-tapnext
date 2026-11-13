@@ -1,12 +1,12 @@
 # Tracks, topics and options
 
-This page describes what durchblick-tapnext reads and publishes, how a track begins and ends, how you control the
+This page describes what xblick-tapnext reads and publishes, how a track begins and ends, how you control the
 node through its queryable, and every option.
 
 ## Inputs
 
-You name the camera as Durchblick's other RGB-D nodes do, for example durchblick-foundationpose and
-durchblick-nemo:
+You name the camera as Durchblick's other RGB-D nodes do, for example xblick-foundationpose and
+xblick-nemo:
 
 ```
 CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME]
@@ -19,14 +19,14 @@ at commas.
 | --- | --- |
 | The colour stream | Encoding `rgb8`, `rgba8`, `bgr8`, `bgra8` or `mono8`, with its `camera_info`. |
 | The depth stream | In the geometry of the colour camera, any size, `16UC1` in mm or `32FC1` in m. |
-| The segmenter | A durchblick-sam3 instance on the colour stream. |
+| The segmenter | An xblick-sam3 instance on the colour stream. |
 
 Examples of camera names:
 
 | Camera | Argument |
 | --- | --- |
 | Azure Kinect | `robot/camera:depth=depth_to_color` |
-| rc_visard, with the depth of durchblick-fast-foundationstereo | `robot/rc_visard:color=left:depth=ffs/depth` |
+| rc_visard, with the depth of xblick-fast-foundationstereo | `robot/rc_visard:color=left:depth=ffs/depth` |
 
 With `--no-depth` the node tracks in 2D only. With `--no-segmenter` it follows only points that you give by hand.
 
@@ -38,7 +38,7 @@ newer than the last frame that it tracked.
 ## The cloud on `<camera>/tapnext/tracks`
 
 The node publishes one point cloud per frame, as a Durchblick point cloud stream (`cloud`, `cloud/shm/<host>`).
-[Point clouds](https://github.com/xblick/durchblick/blob/main/docs/guides/point-clouds.md) describes how to read such a stream. The cloud has the stamp and the
+[Point clouds](https://github.com/xblick/xblick/blob/main/docs/guides/point-clouds.md) describes how to read such a stream. The cloud has the stamp and the
 camera frame of its colour frame.
 
 The cloud has height 1. Its width is the number of tracks, and a cloud without tracks is empty. The points are in
@@ -66,7 +66,7 @@ one track id.
 ### Read the tracks
 
 ```python
-import blick as db
+import xblick as db
 
 tracks = db.PointCloudSubscriber(session, "robot/camera/tapnext/tracks")
 cloud = tracks.latest(timeout=1.0).numpy()[0]       # structured array: cloud["track_id"], cloud["x"], ...
@@ -129,12 +129,12 @@ Rules for `points`:
 The node answers the other two requests at once, with its state. It answers a bad request with an error that
 states the reason.
 
-The client `durchblick-tapnext-queries` sends these queries.
+The client `xblick-tapnext-queries` sends these queries.
 
 ```bash
-.venv/bin/durchblick-tapnext-queries --camera robot/camera                              # the state
-.venv/bin/durchblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
-.venv/bin/durchblick-tapnext-queries --camera robot/camera --json '{"source": "none"}'  # no more seeding
+.venv/bin/xblick-tapnext-queries --camera robot/camera                              # the state
+.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
+.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"source": "none"}'  # no more seeding
 ```
 
 | Option | Default | Meaning |
@@ -159,7 +159,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 - the points without a free track,
 - the seeding source.
 
-## Options of `durchblick-tapnext`
+## Options of `xblick-tapnext`
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -190,11 +190,11 @@ node's GPU. Otherwise it reads from the host ring in shared memory. `shm` and `c
 each stream uses.
 
 **MPS.** If you set `CUDA_MPS_PIPE_DIRECTORY`, the node expects an MPS daemon and stops at start when none answers.
-[Sharing a GPU](https://github.com/xblick/durchblick/blob/main/docs/guides/sharing-a-gpu.md) explains MPS.
+[Sharing a GPU](https://github.com/xblick/xblick/blob/main/docs/guides/sharing-a-gpu.md) explains MPS.
 
 ## Parameters
 
 Every option is also a parameter of the node `<camera>/tapnext`. The live ones change while the node runs:
 `points_per_object`, `forget`, `margin`; the tables mark them. The others are read-only and apply at the next start,
-where `--param NAME:=VALUE` or `--params-file FILE` set them. Durchblick's terminal interface (`blick`, tab
-Parameters) and `blick param` show them.
+where `--param NAME:=VALUE` or `--params-file FILE` set them. Durchblick's terminal interface (`xblick`, tab
+Parameters) and `xblick param` show them.

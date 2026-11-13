@@ -1,12 +1,12 @@
-# durchblick-tapnext
+# xblick-tapnext
 
-durchblick-tapnext follows points on objects through a camera's colour stream and lifts them to 3D with the depth
+xblick-tapnext follows points on objects through a camera's colour stream and lifts them to 3D with the depth
 stream. It tells you where the surface points of an object go, frame by frame, at 5.6 ms per frame.
 
-It is a node of [Durchblick](https://github.com/xblick/durchblick) around Google DeepMind's
+It is a node of [Durchblick](https://github.com/xblick/xblick) around Google DeepMind's
 [TAPNext++](https://tap-next-plus-plus.github.io/) (CVPR 2026). TAPNext++ is an online point tracker. You give it
 points in one frame, and it reports the position and the visibility of each point in every later frame. By default
-the node places the points on the objects that a durchblick-sam3 instance segments.
+the node places the points on the objects that an xblick-sam3 instance segments.
 
 ## What it publishes
 
@@ -17,16 +17,16 @@ the node places the points on the objects that a durchblick-sam3 instance segmen
 | `<camera>/diagnostics` | `diagnostic_msgs/DiagnosticArray` | The status `tapnext`, once a second. |
 
 The node reads a colour stream with its `camera_info`, a depth stream in the geometry of the colour camera, and
-the instance image of durchblick-sam3. Every cloud has the stamp and the camera frame of its colour frame.
+the instance image of xblick-sam3. Every cloud has the stamp and the camera frame of its colour frame.
 
 Details: [docs/tracks.md](docs/tracks.md).
 
 ## Requirements
 
 - An NVIDIA GPU with CUDA. The node needs about 1.7 GB of VRAM with the checkpoint 256 and 2.6 GB with 512.
-- Durchblick's Python package `blick` 0.4 or newer, below 0.5. The setup script installs it from source.
+- Durchblick's Python package `xblick` 0.5 or newer, below 0.6. The setup script installs it from source.
 - [uv](https://docs.astral.sh/uv/), git and curl.
-- A [durchblick-sam3](https://github.com/xblick/durchblick-sam3) instance on the same camera, unless
+- A [xblick-sam3](https://github.com/xblick/xblick-sam3) instance on the same camera, unless
   you give all points by hand.
 - DeepMind's tapnet code and the TAPNext++ checkpoints are under Apache 2.0.
 
@@ -44,24 +44,24 @@ into `weights/` and checks their SHA-256. A second call does only what changed. 
 
 ## Run
 
-Start durchblick-sam3 on the camera first. Then start the node. The camera names are examples. The node connects
-to the Zenoh router of the PC, which [Sessions](https://github.com/xblick/durchblick/blob/main/docs/concepts/sessions.md) explains.
+Start xblick-sam3 on the camera first. Then start the node. The camera names are examples. The node connects
+to the Zenoh router of the PC, which [Sessions](https://github.com/xblick/xblick/blob/main/docs/concepts/sessions.md) explains.
 
 ```bash
-.venv/bin/durchblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
 ```
 
 `--compile default` compiles the network during the first frames, which takes about a minute. After that a frame
 takes about half the time.
 
-`blick rerun` shows the tracks without options. It draws the lifted points in 3D and the visible points over
+`xblick rerun` shows the tracks without options. It draws the lifted points in 3D and the visible points over
 the colour image, with one colour per object.
 
 Add points by hand and read the state of the node:
 
 ```bash
-.venv/bin/durchblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
-.venv/bin/durchblick-tapnext-queries --camera robot/camera
+.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
+.venv/bin/xblick-tapnext-queries --camera robot/camera
 ```
 
 The options that most users change:
@@ -79,7 +79,7 @@ The options that most users change:
 
 All options, the cloud layout and the rules for tracks: [docs/tracks.md](docs/tracks.md).
 
-Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`blick`, tab Parameters) and `blick param` show. `points_per_object`, `forget` and `margin` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them.
+Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`xblick`, tab Parameters) and `xblick param` show. `points_per_object`, `forget` and `margin` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them.
 
 ## Why it is fast
 
@@ -96,7 +96,7 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 ## Limits
 
-- Version 0.1.0. We tested the node on TUM RGB-D with ground truth and with durchblick-sam3 on a replayed RGB-D
+- Version 0.2.0. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
   sequence. We have not tested it on a robot.
 - We have not measured the speed on the GPUs of a robot.
 - The node publishes the state of each track per frame. A consumer builds the trajectory of a track from its id.
@@ -108,8 +108,8 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 - [docs/tracks.md](docs/tracks.md): inputs, the cloud layout, how tracks begin and end, the queryable, all options.
 - [docs/performance.md](docs/performance.md): speed and accuracy, with setup and method.
 - [docs/design.md](docs/design.md): how the node adds points to a working tracker, the decisions, the tests.
-- Durchblick: [Point clouds](https://github.com/xblick/durchblick/blob/main/docs/guides/point-clouds.md), [Pairing streams](https://github.com/xblick/durchblick/blob/main/docs/guides/pairing-streams.md),
-  [Timestamps](https://github.com/xblick/durchblick/blob/main/docs/concepts/timestamps.md), [Transports](https://github.com/xblick/durchblick/blob/main/docs/concepts/transports.md).
+- Durchblick: [Point clouds](https://github.com/xblick/xblick/blob/main/docs/guides/point-clouds.md), [Pairing streams](https://github.com/xblick/xblick/blob/main/docs/guides/pairing-streams.md),
+  [Timestamps](https://github.com/xblick/xblick/blob/main/docs/concepts/timestamps.md), [Transports](https://github.com/xblick/xblick/blob/main/docs/concepts/transports.md).
 
 ## Licence and credits
 

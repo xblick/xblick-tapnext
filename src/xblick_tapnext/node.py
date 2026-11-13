@@ -1,7 +1,7 @@
-"""durchblick-tapnext: TAPNext++ (model.py) follows points of a camera's colour stream, frame by frame; by default the
-points of a segmenter's objects (durchblick-sam3's instances), lifted to 3D with the camera's depth.
+"""xblick-tapnext: TAPNext++ (model.py) follows points of a camera's colour stream, frame by frame; by default the
+points of a segmenter's objects (xblick-sam3's instances), lifted to 3D with the camera's depth.
 
-    durchblick-tapnext --camera robot/camera:depth=depth_to_color [--no-depth] [--no-segmenter] \\
+    xblick-tapnext --camera robot/camera:depth=depth_to_color [--no-depth] [--no-segmenter] \\
                        [--node tapnext] [--points-per-object 32] [--forget 6] \\
                        [--max-tracks 1024] [--margin 4] [--checkpoint 256 | 512 | FILE] [--compile MODE] \\
                        [--history 60] [--max-offset-ms 0] [--local shm|cuda]
@@ -38,14 +38,14 @@ import threading
 import time
 from collections import OrderedDict
 
-import blick as db
 import numpy as np
-from blick import mps, node, tensors, topics
-from blick.camera import check_local
-from blick.history import FrameHistory, PartnerHistory, StampedHistory
-from blick.msg import PointField
-from blick.rgbd import CameraSpec, check_same_camera
-from blick.session import add_arguments, open_from_args
+import xblick as db
+from xblick import mps, node, tensors, topics
+from xblick.camera import check_local
+from xblick.history import FrameHistory, PartnerHistory, StampedHistory
+from xblick.msg import PointField
+from xblick.rgbd import CameraSpec, check_same_camera
+from xblick.session import add_arguments, open_from_args
 
 from .queries import QUERIES, parse
 
@@ -59,7 +59,7 @@ QUERY_WAIT_S = 2.0  # how long a points query waits for a frame before it is ans
 
 def cloud(xyz: np.ndarray, uv: np.ndarray, track_id: np.ndarray, object_id: np.ndarray, visible: np.ndarray):
     """The tracks as one row of points (FIELDS)."""
-    from blick.points import points_dtype  # noqa: PLC0415
+    from xblick.points import points_dtype  # noqa: PLC0415
 
     points = np.zeros((1, len(uv)), points_dtype(FIELDS, POINT_STEP))
     for name, values in (("x", xyz[:, 0]), ("y", xyz[:, 1]), ("z", xyz[:, 2]), ("u", uv[:, 0]), ("v", uv[:, 1]),
@@ -75,13 +75,13 @@ LIVE = {"points_per_object": {"range": (1, 1024, 1), "unit": "points"},
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="durchblick-tapnext", description=__doc__,
+    parser = argparse.ArgumentParser(prog="xblick-tapnext", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--camera", required=True,
                         help="CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME], e.g. "
                              "robot/camera:depth=depth_to_color or robot/rc_visard:color=left:depth=ffs/depth; "
                              "the depth in the colour camera's geometry (16UC1 mm or 32FC1 m), the segmenter a "
-                             "durchblick-sam3 instance on the colour stream")
+                             "xblick-sam3 instance on the colour stream")
     parser.add_argument("--no-depth", action="store_true", help="2D only: no depth stream, x, y, z NaN")
     parser.add_argument("--no-segmenter", action="store_true", help="no segmenter: points by hand only")
     parser.add_argument("--max-offset-ms", type=float, default=None,
@@ -136,7 +136,7 @@ def main(argv=None) -> int:
     for k in keys.values():
         topics.check_name(k)
 
-    node.start("durchblick-tapnext", max_hz=args.max_hz, local=args.local)
+    node.start("xblick-tapnext", max_hz=args.max_hz, local=args.local)
 
     import torch  # noqa: PLC0415 - with the model, after the arguments are checked
 
@@ -173,11 +173,11 @@ def main(argv=None) -> int:
                                             lambda m: detections_history.put(m.header.stamp.to_ns(), m))
     queryable = session.declare_queryable(f"{camera}/{args.node}/{QUERIES}")  # answered between frames
     tracks_pub = None  # with the first frame: its camera frame
-    report = node.Reporter(session, camera, args.node, "durchblick-tapnext", max_hz=args.max_hz)
+    report = node.Reporter(session, camera, args.node, "xblick-tapnext", max_hz=args.max_hz)
     report.watch(color)
     counts = report.counts
     source = "sam3" if instances is not None else "none"
-    print(f"durchblick-tapnext: {' + '.join(keys.values())} -> {camera}/{args.node}/tracks (TAPNext++ "
+    print(f"xblick-tapnext: {' + '.join(keys.values())} -> {camera}/{args.node}/tracks (TAPNext++ "
           f"{args.checkpoint}, input {resolution} x {resolution}, {args.max_tracks} tracks at most, "
           f"{args.points_per_object} per object)", flush=True)
 
@@ -312,7 +312,7 @@ def main(argv=None) -> int:
         frame_id = info.header.frame_id or frame.header.frame_id
         if state.get("key") != (info.width, info.height, frame_id) or Lifter.key_of(info) != state["lifter"].key:
             if state:
-                print(f"durchblick-tapnext: {keys['color']} is now {info.width} x {info.height} in {frame_id}: the "
+                print(f"xblick-tapnext: {keys['color']} is now {info.width} x {info.height} in {frame_id}: the "
                       "tracks start anew", flush=True)
             reset(info, frame_id)
             seeds.clear()

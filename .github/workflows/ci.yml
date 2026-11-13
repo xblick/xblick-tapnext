@@ -1,4 +1,4 @@
-# durchblick-tapnext CI: the reference check, ruff, and the tests that need no GPU (tests/test_tracks.py; the tests
+# xblick-tapnext CI: the reference check, ruff, and the tests that need no GPU (tests/test_tracks.py; the tests
 # that need a CUDA device and the checkpoints skip without them).
 name: ci
 
@@ -22,12 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.27"
-      # The core (blick, github.com/xblick/durchblick) is private while it is not published.
-      # DURCHBLICK_READ_TOKEN: a token with read access to it.
-      - name: Access to the core
-        env:
-          TOKEN: ${{ secrets.DURCHBLICK_READ_TOKEN }}
-        run: git config --global url."https://x-access-token:${TOKEN}@github.com/xblick/".insteadOf "https://github.com/xblick/"
+      # uv fetches the core (xblick) from the public github.com/xblick/xblick at the commit in uv.lock.
       - run: uv sync --locked
       - run: uv run --locked ruff check src tests
       - name: Tests

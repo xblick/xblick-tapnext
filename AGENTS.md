@@ -1,12 +1,12 @@
 # AGENTS.md
 
-durchblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
-each object of a durchblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.1.0, tested on TUM RGB-D and end to end with durchblick-sam3 on a replay, never on the
+xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
+each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
+the camera's depth. Version 0.2.0, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
-tests): AGENTS.md of the core repository (`github.com/xblick/durchblick`).
+tests): AGENTS.md of the core repository (`github.com/xblick/xblick`).
 
 ## Commands
 
@@ -16,18 +16,18 @@ tools/setup.sh                              # submodule, uv sync --frozen, check
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout
 .venv/bin/ruff check src tests              # lint; 120 columns and rules in pyproject.toml, third_party excluded
 tools/check_references.sh                   # no internal references (patterns in the script; also in CI)
-.venv/bin/durchblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
-.venv/bin/durchblick-tapnext-queries --camera robot/camera [--json '{...}']   # read or change the state
+.venv/bin/xblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext-queries --camera robot/camera [--json '{...}']   # read or change the state
 ```
 
-- Console scripts: `durchblick-tapnext` (the node), `durchblick-tapnext-queries` (client of the queryable).
+- Console scripts: `xblick-tapnext` (the node), `xblick-tapnext-queries` (client of the queryable).
 - `tools/setup.sh` needs uv (`UV`, default `uv` on PATH), git and curl. It downloads only what is missing.
-- Standalone order: `zenohd` on the PC, durchblick-sam3 on the camera, then the node. `blick rerun` shows the
+- Standalone order: `zenohd` on the PC, xblick-sam3 on the camera, then the node. `xblick rerun` shows the
   tracks in 3D and over the image.
 - `--compile default`: about a minute of compiling at the first frames.
-- Without a camera: `blick play <recording.mcap> --loop` of an RGB-D recording, or a simulation.
-- Depends on durchblick-sam3: default segmenter is the `sam3` instance on the same camera (`CAMERA:segmenter=NAME`
-  changes it, `--no-segmenter` for points by hand only). The rc_visard also needs durchblick-fast-foundationstereo's
+- Without a camera: `xblick play <recording.mcap> --loop` of an RGB-D recording, or a simulation.
+- Depends on xblick-sam3: default segmenter is the `sam3` instance on the same camera (`CAMERA:segmenter=NAME`
+  changes it, `--no-segmenter` for points by hand only). The rc_visard also needs xblick-fast-foundationstereo's
   depth.
 
 ## Rules
@@ -61,7 +61,7 @@ tools/check_references.sh                   # no internal references (patterns i
   its longest hidden ones end (`Tracks.surplus`).
 - **Stamps only grow.** Symptom: no tracking on a looped replay. Cause: only colour frames (with their depth) newer
   than the last tracked one are processed, newest first, older ones skipped and counted. Fix: looped playback must
-  shift stamps (the core's `blick play --loop` does). A change of the colour camera's size, frame id or model
+  shift stamps (the core's `xblick play --loop` does). A change of the colour camera's size, frame id or model
   resets all tracks.
 - **Depth** in the colour camera's geometry, any size, 16UC1 mm or 32FC1 m (Azure Kinect: `depth_to_color`;
   rc_visard: `color=left:depth=ffs/depth`). `--no-depth`: 2D only. Lifting undistorts with OpenCV (`lifting.py`).
@@ -75,12 +75,12 @@ tools/check_references.sh                   # no internal references (patterns i
 
 | Path | Content |
 | --- | --- |
-| `src/durchblick_tapnext/model.py` | `CHECKPOINTS`, `load`, `SlotTracker`, `Catchup`, coordinate conversion |
-| `src/durchblick_tapnext/tracks.py` | `Tracks`: ids, ending, drift, adoption, surplus |
-| `src/durchblick_tapnext/seeding.py` | points spread inside a mask, `--margin` from its edge |
-| `src/durchblick_tapnext/lifting.py` | `Lifter`: pixels + depth -> metres in the optical frame |
-| `src/durchblick_tapnext/queries.py` | queryable request parsing and the `durchblick-tapnext-queries` client |
-| `src/durchblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
+| `src/xblick_tapnext/model.py` | `CHECKPOINTS`, `load`, `SlotTracker`, `Catchup`, coordinate conversion |
+| `src/xblick_tapnext/tracks.py` | `Tracks`: ids, ending, drift, adoption, surplus |
+| `src/xblick_tapnext/seeding.py` | points spread inside a mask, `--margin` from its edge |
+| `src/xblick_tapnext/lifting.py` | `Lifter`: pixels + depth -> metres in the optical frame |
+| `src/xblick_tapnext/queries.py` | queryable request parsing and the `xblick-tapnext-queries` client |
+| `src/xblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
 | `third_party/tapnet` | DeepMind's tapnet (submodule) |
 | `weights/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (made by `tools/setup.sh`, not in git) |
 | `tests/` | `test_tracks.py` (CPU), `test_model.py` (GPU) |
@@ -98,5 +98,5 @@ tools/check_references.sh                   # no internal references (patterns i
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
 | `--max-offset-ms` | half the depth's frame period |
 | `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
-| Core | `blick>=0.4,<0.5` (pyproject; the core's Python package, renamed from `durchblick` at 0.4.0) |
+| Core | `xblick>=0.5.0,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
 | Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected) |

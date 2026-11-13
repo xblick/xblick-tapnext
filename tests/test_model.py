@@ -5,7 +5,7 @@ of their own; a freed slot takes a new point; the catch-up follows points from o
 import pytest
 import torch
 
-from durchblick_tapnext.model import CHECKPOINTS, WEIGHTS, Catchup, SlotTracker, load, to_model, to_pixels
+from xblick_tapnext.model import CHECKPOINTS, WEIGHTS, Catchup, SlotTracker, load, to_model, to_pixels
 
 H, W, STEP = 240, 320, 2.0  # frame size, pixels the texture moves right per frame
 
