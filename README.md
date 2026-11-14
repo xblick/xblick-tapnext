@@ -112,7 +112,7 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 ## Limits
 
-- Version 0.2.1. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
+- Version 0.2.2. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
   sequence. We have not tested it on a robot.
 - We have not measured the speed on the GPUs of a robot.
 - The node publishes the state of each track per frame. A consumer builds the trajectory of a track from its id.

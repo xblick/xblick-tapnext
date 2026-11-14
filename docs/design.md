@@ -103,7 +103,8 @@ a slot. `queries.parse` states why a request is bad. `SlotTracker.add` refuses a
 ## Weights
 
 `weights.py` lists the checkpoints. `CHECKPOINTS` names the file in `weights/`, the input resolution, the URL on
-DeepMind's storage, the SHA-256 and the size. The node and `tools/setup.sh` use this one list.
+DeepMind's storage, the SHA-256 and the size. The node and `tools/setup.sh` use this one list. The download itself (lock, `.part` files, checks, progress) is the core's `xblick.weights`:
+`weights.STORE` is the node's `xblick.weights.Store`.
 
 At its start, before it loads the model, the node checks that the checkpoint of `--checkpoint` exists. When it
 exists, the node opens no network connection and writes no file, so it starts offline. When it is missing, the node
@@ -120,7 +121,7 @@ A failure ends the node with one line that says what to do. Ctrl-C or SIGTERM du
 once with the exit code 130 or 143. The node then removes the `.part` file.
 
 `--download-only` downloads and checks the checkpoint, then ends. It also checks the SHA-256 of a checkpoint that
-exists. It needs no camera, no Zenoh router and no GPU. `weights.parse_args` lifts the requirement of `--camera`
+exists. It needs no camera, no Zenoh router and no GPU. `xblick.weights.parse_args` lifts the requirement of `--camera`
 when the command line contains `--download-only`. `--no-download` ends the node when the checkpoint is missing and
 names it. It is a read-only parameter like every other start option. `--download-only` is a mode of the command
 line and has no parameter.
@@ -142,7 +143,7 @@ tapnet package, and it copies nothing from tapnet.
 | File | Needs | What it checks |
 | --- | --- | --- |
 | `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
-| `tests/test_weights.py` | CPU, a local HTTP server | the list of checkpoints, no network use when the file exists, a download with its SHA-256, a wrong checksum, Ctrl-C and SIGTERM, two processes at once, the progress in a log file, `--download-only` and `--no-download` |
+| `tests/test_weights.py` | CPU, a local HTTP server | the checkpoints, their URLs and SHA-256, `--checkpoint 512` and a file of one's own, the node's `STORE`, `--download-only` and `--no-download`, a start that stops after its weights step without a GPU. The download itself: the core's tests |
 | `tests/test_model.py` | a GPU and `weights/` | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. |
 
 ## Status and limits
