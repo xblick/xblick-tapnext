@@ -11,6 +11,7 @@
 - `weights.py` is the one list of the checkpoints. `model.CHECKPOINTS` moved there and gained the file sizes.
 - A download goes to `<name>.part` under the lock `weights/.download.lock` and gets its final name after the SHA-256
   check.
+- A download is also checked against the exact size in `weights.py`, before the SHA-256.
 
 ## 0.2.0 (2026-11-13)
 

@@ -112,7 +112,7 @@ file. The node writes it as `<name>.part` in `weights/` and renames it after the
 final name only when it is complete. A second node that starts at the same time waits for the lock. It then finds
 the file and does not download it again.
 
-The check compares the SHA-256 of the download with the one in `weights.py`. A wrong SHA-256 keeps the download as
+The check compares the size and the SHA-256 of the download with those in `weights.py`. A wrong SHA-256 keeps the download as
 `<name>.part`, and the error names it. Remove it, then start again. The progress is a line that updates in place on
 a terminal. In a log file it is one line per tenth of the file.
 

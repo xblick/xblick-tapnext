@@ -12,7 +12,7 @@ tests): AGENTS.md of the core repository (`github.com/xblick/xblick`).
 
 ```bash
 tools/setup.sh                              # submodule, uv sync --frozen, --download-only for 256 and 512 (2.5 GB each)
-.venv/bin/python -m pytest -q               # 33 tests; test_model.py needs a CUDA device and weights/
+.venv/bin/python -m pytest -q               # 35 tests; test_model.py needs a CUDA device and weights/
 .venv/bin/python -m pytest -q tests/test_weights.py  # CPU, 10 s: downloads from a local HTTP server
 .venv/bin/xblick-tapnext --download-only --checkpoint 256   # the checkpoint if missing, SHA-256 checked, exit 0
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout

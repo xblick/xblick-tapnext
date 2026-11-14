@@ -116,8 +116,8 @@ class Url:
 
 @dataclass(frozen=True)
 class Weight:
-    """One file the node reads: where it is (``path``), where it comes from (``source``), about how large it is
-    (``size``, bytes, for the announcement) and, where known, its SHA-256."""
+    """One file the node reads: where it is (``path``), where it comes from (``source``), its exact size (``size``,
+    bytes: announced, and a download of another length is refused) and, where known, its SHA-256."""
 
     path: Path
     source: object  # HuggingFace, Url or a source of the node's own: describe() and fetch(tmp, progress) -> SHA-256
@@ -215,8 +215,8 @@ def ensure(weights: list[Weight], *, download: bool = True, verify: bool = False
 
 
 def _download(w: Weight, out):
-    """One file: into ``<name>.part``, its SHA-256 checked where known, renamed. A failed check keeps the .part file
-    for a look; any other failure or an interrupt removes it."""
+    """One file: into ``<name>.part``, its size and (where known) its SHA-256 checked, renamed. A failed check keeps
+    the .part file for a look; any other failure or an interrupt removes it."""
     tmp = w.path.with_name(w.path.name + ".part")
     w.path.parent.mkdir(parents=True, exist_ok=True)
     print(f"{PROG}: {w.path.name} ({_size(w.size)}) from {w.source.describe()}", file=out, flush=True)
@@ -228,11 +228,14 @@ def _download(w: Weight, out):
         raise
     finally:
         progress.end()
+    if (length := tmp.stat().st_size) != w.size:
+        raise WeightsError(f"{_short(tmp)}: {length} bytes, expected {w.size}: the source changed or the download is "
+                           "damaged; remove it, then start again")
     if w.sha256 is not None and digest != w.sha256:
         raise WeightsError(f"{_short(tmp)}: wrong SHA-256 ({digest}, expected {w.sha256}): the source changed or the "
                            "download is damaged; remove it, then start again")
     os.replace(tmp, w.path)
-    print(f"{PROG}: {_short(w.path)}: " + ("SHA-256 checked" if w.sha256 else "complete") + ", in place",
+    print(f"{PROG}: {_short(w.path)}: " + ("size and SHA-256 checked" if w.sha256 else "size checked") + ", in place",
           file=out, flush=True)
 
 
