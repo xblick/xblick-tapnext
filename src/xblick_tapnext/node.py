@@ -1,7 +1,7 @@
 """xblick-tapnext: TAPNext++ (model.py) follows points of a camera's colour stream, frame by frame; by default the
 points of a segmenter's objects (xblick-sam3's instances), lifted to 3D with the camera's depth.
 
-    xblick-tapnext --camera robot/camera:depth=depth_to_color [--no-depth] [--no-segmenter] \\
+    xblick-tapnext --camera test/camera:depth=depth_to_color [--no-depth] [--no-segmenter] \\
                        [--node tapnext] [--points-per-object 32] [--forget 6] \\
                        [--max-tracks 1024] [--margin 4] [--checkpoint 256 | 512 | FILE] [--compile MODE] \\
                        [--history 60] [--max-offset-ms 0] [--local shm|cuda]
@@ -79,7 +79,7 @@ def main(argv=None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--camera", required=True,
                         help="CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME], e.g. "
-                             "robot/camera:depth=depth_to_color or robot/rc_visard:color=left:depth=ffs/depth; "
+                             "test/camera:depth=depth_to_color or robot/rc_visard:color=left:depth=ffs/depth; "
                              "the depth in the colour camera's geometry (16UC1 mm or 32FC1 m), the segmenter a "
                              "xblick-sam3 instance on the colour stream")
     parser.add_argument("--no-depth", action="store_true", help="2D only: no depth stream, x, y, z NaN")

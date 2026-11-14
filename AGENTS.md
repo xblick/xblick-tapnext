@@ -16,8 +16,8 @@ tools/setup.sh                              # submodule, uv sync --frozen, check
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout
 .venv/bin/ruff check src tests              # lint; 120 columns and rules in pyproject.toml, third_party excluded
 tools/check_references.sh                   # no internal references (patterns in the script; also in CI)
-.venv/bin/xblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
-.venv/bin/xblick-tapnext-queries --camera robot/camera [--json '{...}']   # read or change the state
+.venv/bin/xblick-tapnext --camera test/camera:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext-queries --camera test/camera [--json '{...}']   # read or change the state
 ```
 
 - Console scripts: `xblick-tapnext` (the node), `xblick-tapnext-queries` (client of the queryable).

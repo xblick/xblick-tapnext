@@ -25,7 +25,7 @@ Examples of camera names:
 
 | Camera | Argument |
 | --- | --- |
-| Azure Kinect | `robot/camera:depth=depth_to_color` |
+| Azure Kinect | `test/camera:depth=depth_to_color` |
 | rc_visard, with the depth of xblick-fast-foundationstereo | `robot/rc_visard:color=left:depth=ffs/depth` |
 
 With `--no-depth` the node tracks in 2D only. With `--no-segmenter` it follows only points that you give by hand.
@@ -68,7 +68,7 @@ one track id.
 ```python
 import xblick as db
 
-tracks = db.PointCloudSubscriber(session, "robot/camera/tapnext/tracks")
+tracks = db.PointCloudSubscriber(session, "test/camera/tapnext/tracks")
 cloud = tracks.latest(timeout=1.0).numpy()[0]       # structured array: cloud["track_id"], cloud["x"], ...
 seen = cloud[cloud["visible"] == 1]
 ```
@@ -132,9 +132,9 @@ states the reason.
 The client `xblick-tapnext-queries` sends these queries.
 
 ```bash
-.venv/bin/xblick-tapnext-queries --camera robot/camera                              # the state
-.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
-.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"source": "none"}'  # no more seeding
+.venv/bin/xblick-tapnext-queries --camera test/camera                              # the state
+.venv/bin/xblick-tapnext-queries --camera test/camera --json '{"points": [[640, 360], [700, 400]]}'
+.venv/bin/xblick-tapnext-queries --camera test/camera --json '{"source": "none"}'  # no more seeding
 ```
 
 | Option | Default | Meaning |

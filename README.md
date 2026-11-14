@@ -1,5 +1,7 @@
 # xblick-tapnext
 
+[![xblick core](https://img.shields.io/pypi/v/xblick?label=xblick%20core&color=blue)](https://github.com/xblick/xblick)
+
 xblick-tapnext follows points on objects through a camera's colour stream and lifts them to 3D with the depth
 stream. It tells you where the surface points of an object go, frame by frame, at 5.6 ms per frame.
 
@@ -48,7 +50,7 @@ Start xblick-sam3 on the camera first. Then start the node. The camera names are
 to the Zenoh router of the PC, which [Sessions](https://github.com/xblick/xblick/blob/main/docs/concepts/sessions.md) explains.
 
 ```bash
-.venv/bin/xblick-tapnext --camera robot/camera:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext --camera test/camera:depth=depth_to_color --compile default
 ```
 
 `--compile default` compiles the network during the first frames, which takes about a minute. After that a frame
@@ -60,8 +62,8 @@ the colour image, with one colour per object.
 Add points by hand and read the state of the node:
 
 ```bash
-.venv/bin/xblick-tapnext-queries --camera robot/camera --json '{"points": [[640, 360], [700, 400]]}'
-.venv/bin/xblick-tapnext-queries --camera robot/camera
+.venv/bin/xblick-tapnext-queries --camera test/camera --json '{"points": [[640, 360], [700, 400]]}'
+.venv/bin/xblick-tapnext-queries --camera test/camera
 ```
 
 The options that most users change:

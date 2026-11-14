@@ -1,8 +1,8 @@
 """xblick-tapnext-queries: asks or tells a running xblick-tapnext over its queryable
 ``<camera>/<node>/queries``.
 
-    xblick-tapnext-queries --camera robot/camera                        # the node's state
-    xblick-tapnext-queries --camera robot/camera --json '{"points": [[320, 240]]}'
+    xblick-tapnext-queries --camera test/camera                        # the node's state
+    xblick-tapnext-queries --camera test/camera --json '{"points": [[320, 240]]}'
                                [--node tapnext] [--timeout 10] [--connect ...] [--listen ...] [--config FILE]
 
 A query without payload is answered with the node's state; one with a JSON payload is one of::
@@ -60,7 +60,7 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(prog="xblick-tapnext-queries", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--camera", required=True, help="the camera's base, e.g. robot/camera")
+    parser.add_argument("--camera", required=True, help="the camera's base, e.g. test/camera")
     parser.add_argument("--node", default="tapnext", help="the node's part of the topic: <camera>/<node>/queries")
     parser.add_argument("--json", help="the request (above); without: the node's state")
     parser.add_argument("--timeout", type=float, default=10.0,
