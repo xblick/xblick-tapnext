@@ -68,7 +68,7 @@ one track id.
 ```python
 import xblick as db
 
-tracks = db.PointCloudSubscriber(session, "test/camera/tapnext/tracks")
+tracks = db.PointCloudSubscriber(session, "cam/azurekinect/tapnext/tracks")
 cloud = tracks.latest(timeout=1.0).numpy()[0]       # structured array: cloud["track_id"], cloud["x"], ...
 seen = cloud[cloud["visible"] == 1]
 ```
@@ -132,9 +132,9 @@ states the reason.
 The client `xblick-tapnext-queries` sends these queries.
 
 ```bash
-.venv/bin/xblick-tapnext-queries --camera test/camera                              # the state
-.venv/bin/xblick-tapnext-queries --camera test/camera --json '{"points": [[640, 360], [700, 400]]}'
-.venv/bin/xblick-tapnext-queries --camera test/camera --json '{"source": "none"}'  # no more seeding
+.venv/bin/xblick-tapnext-queries --camera cam/azurekinect                              # the state
+.venv/bin/xblick-tapnext-queries --camera cam/azurekinect --json '{"points": [[640, 360], [700, 400]]}'
+.venv/bin/xblick-tapnext-queries --camera cam/azurekinect --json '{"source": "none"}'  # no more seeding
 ```
 
 | Option | Default | Meaning |
