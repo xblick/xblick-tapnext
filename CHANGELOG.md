@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 (2026-11-14)
+
+- The node downloads a missing checkpoint at its start, before the model loads. It prints the model's terms, the
+  file and its size first. With the checkpoint there it uses no network and writes no file.
+- `--download-only` downloads and checks the checkpoint of `--checkpoint`, then exits 0. It needs no camera, Zenoh
+  router or GPU, and `--camera` may be left out. `tools/setup.sh` calls it for 256 and 512 after `uv sync` and no
+  longer needs curl.
+- `--no-download` ends a start at once when the checkpoint is missing and names it. It is a read-only parameter.
+- `weights.py` is the one list of the checkpoints. `model.CHECKPOINTS` moved there and gained the file sizes.
+- A download goes to `<name>.part` under the lock `weights/.download.lock` and gets its final name after the SHA-256
+  check.
+
 ## 0.2.0 (2026-11-13)
 
 Every name in code, on the wire and on disk is `xblick` now. Only the prose name of the project stays Durchblick.

@@ -97,8 +97,35 @@ The node does not use Zenoh's transport compression for the clouds.
 
 ## Fail fast
 
-The node raises an error for missing weights, a missing submodule, a bad request to the queryable and a misuse of
+The node raises an error for a missing submodule, a bad request to the queryable and a misuse of
 a slot. `queries.parse` states why a request is bad. `SlotTracker.add` refuses a slot that is in use.
+
+## Weights
+
+`weights.py` lists the checkpoints. `CHECKPOINTS` names the file in `weights/`, the input resolution, the URL on
+DeepMind's storage, the SHA-256 and the size. The node and `tools/setup.sh` use this one list.
+
+At its start, before it loads the model, the node checks that the checkpoint of `--checkpoint` exists. When it
+exists, the node opens no network connection and writes no file, so it starts offline. When it is missing, the node
+takes the lock `weights/.download.lock`. It prints the model's terms, the file and its size, and it downloads the
+file. The node writes it as `<name>.part` in `weights/` and renames it after the check. A file therefore has its
+final name only when it is complete. A second node that starts at the same time waits for the lock. It then finds
+the file and does not download it again.
+
+The check compares the SHA-256 of the download with the one in `weights.py`. A wrong SHA-256 keeps the download as
+`<name>.part`, and the error names it. Remove it, then start again. The progress is a line that updates in place on
+a terminal. In a log file it is one line per tenth of the file.
+
+A failure ends the node with one line that says what to do. Ctrl-C or SIGTERM during a download end the node at
+once with the exit code 130 or 143. The node then removes the `.part` file.
+
+`--download-only` downloads and checks the checkpoint, then ends. It also checks the SHA-256 of a checkpoint that
+exists. It needs no camera, no Zenoh router and no GPU. `weights.parse_args` lifts the requirement of `--camera`
+when the command line contains `--download-only`. `--no-download` ends the node when the checkpoint is missing and
+names it. It is a read-only parameter like every other start option. `--download-only` is a mode of the command
+line and has no parameter.
+
+tapnet is code and no weight file. `tools/setup.sh` fetches it, and the node never clones it.
 
 ## tapnet as a submodule
 
@@ -115,6 +142,7 @@ tapnet package, and it copies nothing from tapnet.
 | File | Needs | What it checks |
 | --- | --- | --- |
 | `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
+| `tests/test_weights.py` | CPU, a local HTTP server | the list of checkpoints, no network use when the file exists, a download with its SHA-256, a wrong checksum, Ctrl-C and SIGTERM, two processes at once, the progress in a log file, `--download-only` and `--no-download` |
 | `tests/test_model.py` | a GPU and `weights/` | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. |
 
 ## Status and limits

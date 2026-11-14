@@ -27,7 +27,7 @@ Details: [docs/tracks.md](docs/tracks.md).
 
 - An NVIDIA GPU with CUDA. The node needs about 1.7 GB of VRAM with the checkpoint 256 and 2.6 GB with 512.
 - Durchblick's Python package `xblick` 0.5 or newer, below 0.6. The setup script installs it from source.
-- [uv](https://docs.astral.sh/uv/), git and curl.
+- [uv](https://docs.astral.sh/uv/) and git.
 - A [xblick-sam3](https://github.com/xblick/xblick-sam3) instance on the same camera, unless
   you give all points by hand.
 - DeepMind's tapnet code and the TAPNext++ checkpoints are under Apache 2.0.
@@ -41,8 +41,20 @@ tools/setup.sh
 ```
 
 The script does three things. It fetches DeepMind's tapnet as a git submodule. It creates `.venv` exactly as
-`uv.lock` fixes it, with PyTorch for CUDA 13. It downloads the two TAPNext++ checkpoints (256 and 512, 2.5 GB each)
-into `weights/` and checks their SHA-256. A second call does only what changed. The node then works offline.
+`uv.lock` fixes it, with PyTorch for CUDA 13. It runs `xblick-tapnext --download-only` for the two TAPNext++
+checkpoints (256 and 512, 2.5 GB each), which downloads them into `weights/` and checks their SHA-256. A second call
+does only what changed. The node then works offline.
+
+The node itself also downloads a missing checkpoint at its start, before it loads the model. It prints the model's
+terms, the file and its size first. A preparation script downloads without a start:
+
+```bash
+.venv/bin/xblick-tapnext --download-only --checkpoint 256
+```
+
+`--download-only` needs no camera, no Zenoh router and no GPU, and it exits with 0 when the weights are complete. A
+machine that must never start a download on its own, such as a robot, starts the node with `--no-download`. The
+node then ends at once when a file is missing, and it names the file.
 
 ## Run
 
@@ -78,10 +90,12 @@ The options that most users change:
 | `--forget` | 6 | The seconds for which a track may be hidden before it ends. Live: it changes while the node runs. |
 | `--checkpoint` | `256` | The TAPNext++ checkpoint: `256` or `512`. |
 | `--compile MODE` | off | Compile the network with `torch.compile`, for example `default`. |
+| `--no-download` | off | End at once when the checkpoint is missing. The node downloads nothing. |
+| `--download-only` | off | Download the missing checkpoint, check it and end. `--camera` may be left out. |
 
 All options, the cloud layout and the rules for tracks: [docs/tracks.md](docs/tracks.md).
 
-Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`xblick`, tab Parameters) and `xblick param` show. `points_per_object`, `forget` and `margin` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them.
+Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`xblick`, tab Parameters) and `xblick param` show. `points_per_object`, `forget` and `margin` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them. `--download-only` is a mode of the command line and has no parameter.
 
 ## Why it is fast
 
@@ -98,12 +112,14 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 ## Limits
 
-- Version 0.2.0. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
+- Version 0.2.1. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
   sequence. We have not tested it on a robot.
 - We have not measured the speed on the GPUs of a robot.
 - The node publishes the state of each track per frame. A consumer builds the trajectory of a track from its id.
 - A change of the image size, the frame id or the camera model resets all tracks.
 - The node processes only frames with growing stamps.
+- We tested the download against a local server. We have not downloaded a checkpoint from DeepMind's storage
+  through the node.
 
 ## Documentation
 

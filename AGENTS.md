@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.0, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.1, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
@@ -11,8 +11,10 @@ tests): AGENTS.md of the core repository (`github.com/xblick/xblick`).
 ## Commands
 
 ```bash
-tools/setup.sh                              # submodule, uv sync --frozen, checkpoints 256 + 512 (2.5 GB each)
-.venv/bin/python -m pytest -q               # 12 tests; test_model.py needs a CUDA device and weights/
+tools/setup.sh                              # submodule, uv sync --frozen, --download-only for 256 and 512 (2.5 GB each)
+.venv/bin/python -m pytest -q               # 33 tests; test_model.py needs a CUDA device and weights/
+.venv/bin/python -m pytest -q tests/test_weights.py  # CPU, 10 s: downloads from a local HTTP server
+.venv/bin/xblick-tapnext --download-only --checkpoint 256   # the checkpoint if missing, SHA-256 checked, exit 0
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout
 .venv/bin/ruff check src tests              # lint; 120 columns and rules in pyproject.toml, third_party excluded
 tools/check_references.sh                   # no internal references (patterns in the script; also in CI)
@@ -21,7 +23,8 @@ tools/check_references.sh                   # no internal references (patterns i
 ```
 
 - Console scripts: `xblick-tapnext` (the node), `xblick-tapnext-queries` (client of the queryable).
-- `tools/setup.sh` needs uv (`UV`, default `uv` on PATH), git and curl. It downloads only what is missing.
+- `tools/setup.sh` needs uv (`UV`, default `uv` on PATH) and git. It downloads only what is missing (`--download-only`).
+- `--no-download`: a start with a missing checkpoint ends with one line (exit 1). Excludes `--download-only`.
 - Standalone order: `zenohd` on the PC, xblick-sam3 on the camera, then the node. `xblick rerun` shows the
   tracks in 3D and over the image.
 - `--compile default`: about a minute of compiling at the first frames.
@@ -37,9 +40,13 @@ tools/check_references.sh                   # no internal references (patterns i
 - The cloud layout is a contract (docs/tracks.md table, `tests/test_tracks.py` checks it): field order and types,
   track order by id, `track_id` never reused while the node works, hidden tracks published with `visible` 0 and NaN
   x y z. Change it only with its readers (the core's Rerun bridge draws u, v over the image).
-- Fail fast. Missing weights or submodule, bad queryable requests (`queries.parse` says why), slot misuse
+- Fail fast. Missing submodule, bad queryable requests (`queries.parse` says why), slot misuse
   (`SlotTracker.add` on a used slot) raise.
-- The node works offline.
+- The node works offline when its checkpoint is there. Weights: `weights.py` is the one list (`CHECKPOINTS`: file,
+  resolution, URL, SHA-256, size; `model.py` imports it). `weights.ensure` runs at the start before the model loads;
+  `--download-only` runs it alone. File there: no network, no file written (`test_weights.py` checks it). Keep it so.
+- Downloads: `<name>.part` in `weights/`, renamed after the SHA-256 check, under the lock `weights/.download.lock`.
+  Never let a partial or unchecked file get its final name. No fallbacks. Never clone tapnet at run time.
 - README.md and docs/ are the documentation of record. 120 columns.
 
 ## Traps
@@ -67,6 +74,13 @@ tools/check_references.sh                   # no internal references (patterns i
   rc_visard: `color=left:depth=ffs/depth`). `--no-depth`: 2D only. Lifting undistorts with OpenCV (`lifting.py`).
 - **`--compile default`** halves the time per frame (256: 10.7 -> 5.6 ms) but takes about a minute at the first
   frames. Default checkpoint 256. 512 gained nothing at 640 x 480. float16 autocast.
+- **`--download-only` and `--camera`.** `--camera` is required for a start only. `weights.parse_args` lifts
+  `required` when the token `--download-only` is spelled out (an abbreviation is not seen).
+- **`download_only` as a parameter.** `declare_options` would declare it: it is in `leave_out`. `no_download` is a
+  read-only parameter.
+- **Wrong SHA-256 after a download.** The `.part` file stays, the error names it. Remove it, start again.
+- **Interrupt during a download.** Ctrl-C: exit 130, SIGTERM: exit 143 (`weights._stoppable` overrides
+  `node.start`'s handler while downloading). The `.part` file is removed.
 - **Zenoh (core).** Start nodes without endpoints (they find the PC's router). A session given only `--connect` does
   not listen, and the router does not route between such sessions. No transport compression for the clouds.
 - **Background checks.** Start GPU tests and end-to-end checks in the background with `timeout`. Stop them by PID.
@@ -75,15 +89,16 @@ tools/check_references.sh                   # no internal references (patterns i
 
 | Path | Content |
 | --- | --- |
-| `src/xblick_tapnext/model.py` | `CHECKPOINTS`, `load`, `SlotTracker`, `Catchup`, coordinate conversion |
+| `src/xblick_tapnext/weights.py` | `CHECKPOINTS`, `needed`, `ensure`, `--download-only`/`--no-download`; from `Weight` on the same in every node |
+| `src/xblick_tapnext/model.py` | `load`, `SlotTracker`, `Catchup`, coordinate conversion |
 | `src/xblick_tapnext/tracks.py` | `Tracks`: ids, ending, drift, adoption, surplus |
 | `src/xblick_tapnext/seeding.py` | points spread inside a mask, `--margin` from its edge |
 | `src/xblick_tapnext/lifting.py` | `Lifter`: pixels + depth -> metres in the optical frame |
 | `src/xblick_tapnext/queries.py` | queryable request parsing and the `xblick-tapnext-queries` client |
 | `src/xblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
 | `third_party/tapnet` | DeepMind's tapnet (submodule) |
-| `weights/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (made by `tools/setup.sh`, not in git) |
-| `tests/` | `test_tracks.py` (CPU), `test_model.py` (GPU) |
+| `weights/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (downloaded by the node), `.download.lock`; not in git |
+| `tests/` | `test_tracks.py`, `test_weights.py` (CPU), `test_model.py` (GPU) |
 | `docs/` | tracks, performance, design |
 
 ## Defaults

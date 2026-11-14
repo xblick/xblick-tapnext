@@ -4,7 +4,7 @@ points of a segmenter's objects (xblick-sam3's instances), lifted to 3D with the
     xblick-tapnext --camera cam/azurekinect:depth=depth_to_color [--no-depth] [--no-segmenter] \\
                        [--node tapnext] [--points-per-object 32] [--forget 6] \\
                        [--max-tracks 1024] [--margin 4] [--checkpoint 256 | 512 | FILE] [--compile MODE] \\
-                       [--history 60] [--max-offset-ms 0] [--local shm|cuda]
+                       [--history 60] [--max-offset-ms 0] [--local shm|cuda] [--no-download]
                        [--connect ...] [--listen ...] [--config FILE]   (default: the PC's Zenoh router)
 
 The camera is Durchblick's CameraSpec, ``CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME]`` (defaults color,
@@ -27,6 +27,10 @@ tracks; they end as tracks.py tells (hidden or their object unseen for --forget 
 segmenter's mask comes some frames after its frame: its new points are followed from that frame to the newest in a
 state of their own first (model.Catchup), then go into the tracker's. Frames per second, the time a frame takes,
 tracks and visible tracks go to ``<camera>/diagnostics`` (status ``<node>``) once a second.
+
+Weights (weights.py): a missing checkpoint is downloaded at the start, before the model loads; --no-download ends the
+node instead. ``xblick-tapnext --download-only [--checkpoint 256|512]`` only downloads and checks it (no camera, no
+Zenoh, no GPU), for preparation scripts.
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ from xblick.msg import PointField
 from xblick.rgbd import CameraSpec, check_same_camera
 from xblick.session import add_arguments, open_from_args
 
+from . import weights
 from .queries import QUERIES, parse
 
 POINT_STEP = 32
@@ -98,26 +103,29 @@ def main(argv=None) -> int:
     parser.add_argument("--margin", type=int, default=4,
                         help="pixels new points keep from their mask's edge, and a track may be outside its mask")
     parser.add_argument("--checkpoint", default="256",
-                        help="TAPNext++'s: 256 or 512 (the input resolution it was fine-tuned at; in weights/ from "
-                             "tools/setup.sh; README, \"Speed\") or a .pt file of a 256 one")
+                        help="TAPNext++'s: 256 or 512 (the input resolution it was fine-tuned at; in weights/, "
+                             "downloaded at the first start; README, \"Speed\") or a .pt file of a 256 one")
     parser.add_argument("--compile", default=None, metavar="MODE",
                         help="torch.compile the network in this mode (e.g. default: about twice as fast; compiles "
                              "at the first frames, about a minute)")
     parser.add_argument("--history", type=int, default=60,
                         help="frames kept for the segmenter's results and queries to refer to (by stamp)")
     parser.add_argument("--device", default="cuda")
+    weights.add_arguments(parser)  # --download-only (a mode of the command line), --no-download
     add_arguments(parser)  # --connect, --listen, --config; default: the PC's Zenoh router
     # --max-hz: every frame by default (a tracker follows best frame by frame)
     # --local: auto (the CUDA ring on this GPU, else shared memory), shm or cuda
     node.add_arguments(parser, local=("auto", "shm", "cuda"))
     node.Parameters.add_arguments(parser)  # --param NAME:=VALUE, --params-file, --dump-params, --params-read-only
-    args = parser.parse_args(argv)
+    args = weights.parse_args(parser, argv)  # --download-only: --camera not required
+    if args.download_only:
+        return weights.download_only(weights.needed(args.checkpoint))
     mps.check()  # with CUDA_MPS_PIPE_DIRECTORY (MPS meant) its daemon has to run: else stop here
     # the options as parameters (the terminal interface shows them): read-only, but LIVE
     session = open_from_args(args)
     params = node.Parameters(session, args.node, args.camera.split(":", 1)[0])
     params.configure(args)
-    params.declare_options(parser, args, live=LIVE, leave_out=("camera", "node"))
+    params.declare_options(parser, args, live=LIVE, leave_out=("camera", "node", "download_only"))
     params.check_overrides()
     if args.points_per_object < 1 or args.max_tracks < 1 or args.forget <= 0 or args.history < 2 or args.margin < 0 \
             or (args.max_offset_ms is not None and args.max_offset_ms < 0):
@@ -137,6 +145,12 @@ def main(argv=None) -> int:
         topics.check_name(k)
 
     node.start("xblick-tapnext", max_hz=args.max_hz, local=args.local)
+    try:
+        weights.ensure(weights.needed(args.checkpoint), download=not args.no_download)
+    except weights.WeightsError as error:
+        params.close()
+        session.close()
+        return weights.fail(error)
 
     import torch  # noqa: PLC0415 - with the model, after the arguments are checked
 

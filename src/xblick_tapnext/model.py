@@ -29,18 +29,11 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+from .weights import CHECKPOINTS, WEIGHTS  # the checkpoints' one list (weights.py)
+
 REPO = Path(__file__).resolve().parents[2]
 TAPNET = REPO / "third_party" / "tapnet"
-WEIGHTS = REPO / "weights"
 MODEL = 256  # TAPNext's coordinates: 256 x 256 whatever the input resolution
-# checkpoints in weights/: the input resolution they were fine-tuned at (DeepMind's TAPNext++ README and VOTSp2026
-# tracker; Apache 2.0)
-CHECKPOINTS = {
-    "256": ("tapnextpp_ckpt.pt", 256, "https://storage.googleapis.com/dm-tapnet/tapnextpp/tapnextpp_ckpt.pt",
-            "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da"),
-    "512": ("tapnextpp_512.ckpt", 512, "https://storage.googleapis.com/gresearch/tapnextpp/tapnextpp_512.ckpt",
-            "6cd0e793fdcface3063d63f8ed3819bcf74c2c0468fe1fef85acee4de2f3609f"),
-}
 
 
 def _tapnext_module():
@@ -58,10 +51,11 @@ def load(checkpoint: str, device: torch.device):
     resolution."""
     tapnext_torch = _tapnext_module()
     if checkpoint in CHECKPOINTS:
-        name, resolution, _, _ = CHECKPOINTS[checkpoint]
+        name, resolution, *_ = CHECKPOINTS[checkpoint]
         path = WEIGHTS / name
         if not path.is_file():
-            raise FileNotFoundError(f"{path}: missing (tools/setup.sh)")
+            raise FileNotFoundError(f"{path}: missing (xblick-tapnext downloads it at its start, or with "
+                                    "--download-only)")
     else:
         path, resolution = Path(checkpoint), MODEL
     net = tapnext_torch.TAPNext(image_size=(MODEL, MODEL))

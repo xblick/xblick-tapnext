@@ -176,6 +176,8 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--compile MODE` | off | Compile the network with `torch.compile` in this mode during the first frames. |
 | `--history` | 60 | The number of frames that the node keeps. Results of the segmenter and queries refer to them by stamp. |
 | `--device` | `cuda` | The GPU of the node. |
+| `--no-download` | off | End at once when the checkpoint is missing, and name it. The node downloads nothing. |
+| `--download-only` | off | Download the missing checkpoint of `--checkpoint`, check its SHA-256 and end. The node needs no camera, Zenoh router or GPU for it, and `--camera` may be left out. |
 | `--max-hz` | every frame | The highest number of colour frames per second. `0` or `none` also takes every frame. |
 | `--local` | `auto` | The transport for a camera on the same host: `auto`, `shm` or `cuda`. |
 | `--connect`, `--listen`, `--config` | the router of the PC | The Zenoh session, as for every Durchblick program. |
@@ -197,4 +199,4 @@ each stream uses.
 Every option is also a parameter of the node `<camera>/tapnext`. The live ones change while the node runs:
 `points_per_object`, `forget`, `margin`; the tables mark them. The others are read-only and apply at the next start,
 where `--param NAME:=VALUE` or `--params-file FILE` set them. Durchblick's terminal interface (`xblick`, tab
-Parameters) and `xblick param` show them.
+Parameters) and `xblick param` show them. `--download-only` is a mode of the command line and has no parameter.
