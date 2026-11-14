@@ -1,6 +1,9 @@
 # xblick-tapnext
 
 [![xblick core](https://img.shields.io/pypi/v/xblick?label=xblick%20core&color=blue)](https://github.com/xblick/xblick)
+[![tests](https://github.com/xblick/xblick-tapnext/actions/workflows/ci.yml/badge.svg)](https://github.com/xblick/xblick-tapnext/actions/workflows/ci.yml)
+[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
+[![device](https://img.shields.io/badge/needs-NVIDIA%20GPU-76b900)](README.md)
 
 xblick-tapnext follows points on objects through a camera's colour stream and lifts them to 3D with the depth
 stream. It tells you where the surface points of an object go, frame by frame, at 5.6 ms per frame.
