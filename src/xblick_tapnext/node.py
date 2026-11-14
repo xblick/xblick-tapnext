@@ -28,9 +28,9 @@ segmenter's mask comes some frames after its frame: its new points are followed 
 state of their own first (model.Catchup), then go into the tracker's. Frames per second, the time a frame takes,
 tracks and visible tracks go to ``<camera>/diagnostics`` (status ``<node>``) once a second.
 
-Weights (weights.py): a missing checkpoint is downloaded at the start, before the model loads; --no-download ends the
-node instead. ``xblick-tapnext --download-only [--checkpoint 256|512]`` only downloads and checks it (no camera, no
-Zenoh, no GPU), for preparation scripts.
+Weights (weights.py; in the node's cache directory ~/.cache/xblick/tapnext, or --weights-dir): a missing checkpoint is
+downloaded at the start, before the model loads; --no-download ends the node instead. ``xblick-tapnext --download-only
+[--checkpoint 256|512]`` only downloads and checks it (no camera, no Zenoh, no GPU), for preparation scripts.
 """
 
 from __future__ import annotations
@@ -104,8 +104,8 @@ def main(argv=None) -> int:
     parser.add_argument("--margin", type=int, default=4,
                         help="pixels new points keep from their mask's edge, and a track may be outside its mask")
     parser.add_argument("--checkpoint", default="256",
-                        help="TAPNext++'s: 256 or 512 (the input resolution it was fine-tuned at; in weights/, "
-                             "downloaded at the first start; README, \"Speed\") or a .pt file of a 256 one")
+                        help="TAPNext++'s: 256 or 512 (the input resolution it was fine-tuned at; in the cache "
+                             "directory, downloaded at the first start; README, \"Speed\") or a .pt file of a 256 one")
     parser.add_argument("--compile", default=None, metavar="MODE",
                         help="torch.compile the network in this mode (e.g. default: about twice as fast; compiles "
                              "at the first frames, about a minute)")
@@ -120,7 +120,8 @@ def main(argv=None) -> int:
     node.Parameters.add_arguments(parser)  # --param NAME:=VALUE, --params-file, --dump-params, --params-read-only
     args = xblick_weights.parse_args(parser, argv)  # --download-only: --camera not required
     if args.download_only:
-        return weights.STORE.download_only(weights.needed(args.checkpoint))
+        return weights.store_for(parser, args).download_only(
+            weights.needed(args.checkpoint), options=weights.options(args))
     mps.check()  # with CUDA_MPS_PIPE_DIRECTORY (MPS meant) its daemon has to run: else stop here
     # the options as parameters (the terminal interface shows them): read-only, but LIVE
     session = open_from_args(args)
@@ -146,12 +147,13 @@ def main(argv=None) -> int:
         topics.check_name(k)
 
     node.start("xblick-tapnext", max_hz=args.max_hz, local=args.local)
+    store = weights.store_for(parser, args)  # --weights-dir, also given as a parameter
     try:
-        weights.STORE.ensure(weights.needed(args.checkpoint), download=not args.no_download)
+        store.ensure(weights.needed(args.checkpoint), download=not args.no_download, options=weights.options(args))
     except xblick_weights.WeightsError as error:
         params.close()
         session.close()
-        return weights.STORE.fail(error)
+        return store.fail(error)
 
     import torch  # noqa: PLC0415 - with the model, after the arguments are checked
 
@@ -161,7 +163,7 @@ def main(argv=None) -> int:
     from .tracks import Tracks  # noqa: PLC0415
 
     device = torch.device(args.device)
-    net, resolution = load(args.checkpoint, device)
+    net, resolution = load(args.checkpoint, device, store.root)
     if args.compile is not None:
         net = torch.compile(net, mode=args.compile)
     forget_ns = round(args.forget * 1e9)

@@ -102,14 +102,16 @@ a slot. `queries.parse` states why a request is bad. `SlotTracker.add` refuses a
 
 ## Weights
 
-`weights.py` lists the checkpoints. `CHECKPOINTS` names the file in `weights/`, the input resolution, the URL on
+`weights.py` lists the checkpoints. `CHECKPOINTS` names the file in the node's cache directory, the input resolution, the URL on
 DeepMind's storage, the SHA-256 and the size. The node and `tools/setup.sh` use this one list. The download itself (lock, `.part` files, checks, progress) is the core's `xblick.weights`:
-`weights.STORE` is the node's `xblick.weights.Store`.
+`weights.STORE` is the node's `xblick.weights.Store`. Its root is the node's cache directory, `~/.cache/xblick/tapnext/`
+(`XBLICK_HOME`, `XDG_CACHE_HOME`, `--weights-dir`). The checkout's `weights/` is the former place: the node does not
+read weights there, and it prints the command that moves them.
 
 At its start, before it loads the model, the node checks that the checkpoint of `--checkpoint` exists. When it
 exists, the node opens no network connection and writes no file, so it starts offline. When it is missing, the node
-takes the lock `weights/.download.lock`. It prints the model's terms, the file and its size, and it downloads the
-file. The node writes it as `<name>.part` in `weights/` and renames it after the check. A file therefore has its
+takes the lock `~/.cache/xblick/tapnext/.download.lock`. It prints the model's terms, the file and its size, and it downloads the
+file. The node writes it as `<name>.part` in `~/.cache/xblick/tapnext/` and renames it after the check. A file therefore has its
 final name only when it is complete. A second node that starts at the same time waits for the lock. It then finds
 the file and does not download it again.
 
@@ -144,7 +146,7 @@ tapnet package, and it copies nothing from tapnet.
 | --- | --- | --- |
 | `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
 | `tests/test_weights.py` | CPU, a local HTTP server | the checkpoints, their URLs and SHA-256, `--checkpoint 512` and a file of one's own, the node's `STORE`, `--download-only` and `--no-download`, a start that stops after its weights step without a GPU. The download itself: the core's tests |
-| `tests/test_model.py` | a GPU and `weights/` | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. |
+| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. |
 
 ## Status and limits
 

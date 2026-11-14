@@ -1,21 +1,24 @@
 """The slot tracker (model.py) on a texture moving 2 pixels a frame (needs a CUDA device and the 256 checkpoint in
-weights/): points given at the start follow it; points given later into the running state go as they do in a state
-of their own; a freed slot takes a new point; the catch-up follows points from older frames."""
+the node's cache directory): points given at the start follow it; points given later into the running state go as
+they do in a state of their own; a freed slot takes a new point; the catch-up follows points from older frames."""
 
 import pytest
 import torch
 
-from xblick_tapnext.model import CHECKPOINTS, WEIGHTS, Catchup, SlotTracker, load, to_model, to_pixels
+from xblick_tapnext.model import CHECKPOINTS, Catchup, SlotTracker, load, to_model, to_pixels
+from xblick_tapnext.weights import STORE
+
+WEIGHTS = STORE.root  # the node's cache directory (XBLICK_HOME moves it)
 
 H, W, STEP = 240, 320, 2.0  # frame size, pixels the texture moves right per frame
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available() or not (WEIGHTS / CHECKPOINTS["256"][0]).is_file(),
-                                reason="needs a CUDA device and weights/ (tools/setup.sh)")
+                                reason="needs a CUDA device and the checkpoint (tools/setup.sh)")
 
 
 @pytest.fixture(scope="module")
 def net():
-    return load("256", torch.device("cuda"))
+    return load("256", torch.device("cuda"), WEIGHTS)
 
 
 def frames(n):

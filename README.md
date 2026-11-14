@@ -42,7 +42,7 @@ tools/setup.sh
 
 The script does three things. It fetches DeepMind's tapnet as a git submodule. It creates `.venv` exactly as
 `uv.lock` fixes it, with PyTorch for CUDA 13. It runs `xblick-tapnext --download-only` for the two TAPNext++
-checkpoints (256 and 512, 2.5 GB each), which downloads them into `weights/` and checks their SHA-256. A second call
+checkpoints (256 and 512, 2.5 GB each), which downloads them into `~/.cache/xblick/tapnext/` and checks their SHA-256. A second call
 does only what changed. The node then works offline.
 
 The node itself also downloads a missing checkpoint at its start, before it loads the model. It prints the model's
@@ -55,6 +55,20 @@ terms, the file and its size first. A preparation script downloads without a sta
 `--download-only` needs no camera, no Zenoh router and no GPU, and it exits with 0 when the weights are complete. A
 machine that must never start a download on its own, such as a robot, starts the node with `--no-download`. The
 node then ends at once when a file is missing, and it names the file.
+
+### Where the weights are
+
+The node keeps its weights in its cache directory, `~/.cache/xblick/tapnext/`. `XBLICK_HOME=/dir` moves it to `/dir/cache/tapnext/`,
+and `XDG_CACHE_HOME` moves it as well. `--weights-dir DIR` names another directory. The place is the same for a
+checkout and for a pip install. [Where files are](https://github.com/xblick/xblick/blob/main/docs/reference/files.md) lists the places, and it shows how to copy the cache to a
+PC without internet.
+
+Up to version 0.2.2, the weights were in the checkout's `weights/`. The node does not read them there. At its start it
+prints the command that moves them. In the checkout it is:
+
+```bash
+mkdir -p ~/.cache/xblick && mv weights ~/.cache/xblick/tapnext
+```
 
 ## Run
 
@@ -92,6 +106,7 @@ The options that most users change:
 | `--compile MODE` | off | Compile the network with `torch.compile`, for example `default`. |
 | `--no-download` | off | End at once when the checkpoint is missing. The node downloads nothing. |
 | `--download-only` | off | Download the missing checkpoint, check it and end. `--camera` may be left out. |
+| `--weights-dir DIR` | the cache directory | where the weights are and go, in place of `~/.cache/xblick/tapnext/` |
 
 All options, the cloud layout and the rules for tracks: [docs/tracks.md](docs/tracks.md).
 
@@ -112,7 +127,7 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 ## Limits
 
-- Version 0.2.2. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
+- Version 0.2.3. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
   sequence. We have not tested it on a robot.
 - We have not measured the speed on the GPUs of a robot.
 - The node publishes the state of each track per frame. A consumer builds the trajectory of a track from its id.

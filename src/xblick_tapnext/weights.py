@@ -22,9 +22,10 @@ from pathlib import Path
 from xblick.weights import Store, Url, Weight
 
 PROG = "xblick-tapnext"
+NODE = "tapnext"  # the short name: its cache directory is ~/.cache/xblick/tapnext
 REQUIRED = ()  # (path, what): code from tools/setup.sh that must be there first; none here
 REPO = Path(__file__).resolve().parents[2]
-WEIGHTS = REPO / "weights"
+FORMER = REPO / "weights"  # the weights' place before 0.2.3 (the checkout): not used, the store names the move
 CHECKPOINTS = {  # name -> (file in weights/, input resolution, URL, SHA-256, size); Apache 2.0
     "256": ("tapnextpp_ckpt.pt", 256, "https://storage.googleapis.com/dm-tapnet/tapnextpp/tapnextpp_ckpt.pt",
             "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da", 2_532_282_370),
@@ -42,7 +43,21 @@ def needed(checkpoint: str) -> list[Weight]:
     if checkpoint not in CHECKPOINTS:
         return []
     name, _, url, sha256, size = CHECKPOINTS[checkpoint]
-    return [Weight(WEIGHTS / name, Url(url), size, sha256)]
+    return [Weight(Path(name), Url(url), size, sha256)]  # below the store's root
 
 
-STORE = Store(PROG, WEIGHTS, TERMS, REQUIRED, repo=REPO)  # the download (xblick.weights), its lock in WEIGHTS
+def options(args) -> list[str]:
+    """The options that select the weights (and --weights-dir), for the download command the lines name."""
+    return ["--checkpoint", args.checkpoint] + (["--weights-dir", args.weights_dir] if args.weights_dir else [])
+
+
+def store_for(parser, args) -> Store:
+    """STORE at --weights-dir (not given: the node's cache directory); a wrong --weights-dir is an argument error."""
+    try:
+        return STORE.at(args.weights_dir)
+    except ValueError as error:
+        parser.error(f"--weights-dir: {error}")
+
+
+# the download (xblick.weights): the root is the node's cache directory, its lock there
+STORE = Store(PROG, node=NODE, terms=TERMS, required=REQUIRED, repo=REPO, former=[FORMER])

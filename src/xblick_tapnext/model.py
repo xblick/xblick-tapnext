@@ -29,7 +29,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from .weights import CHECKPOINTS, WEIGHTS  # the checkpoints' one list (weights.py)
+from .weights import CHECKPOINTS  # the checkpoints' one list (weights.py)
 
 REPO = Path(__file__).resolve().parents[2]
 TAPNET = REPO / "third_party" / "tapnet"
@@ -46,13 +46,13 @@ def _tapnext_module():
     return tapnext_torch
 
 
-def load(checkpoint: str, device: torch.device):
-    """TAPNext++'s network (``CHECKPOINTS`` name, or a path to a .pt of a 256-resolution TAPNext) and its input
-    resolution."""
+def load(checkpoint: str, device: torch.device, root: Path):
+    """TAPNext++'s network (``CHECKPOINTS`` name, its file in ``root``: the store's, ``weights.STORE.root``; or a path
+    to a .pt of a 256-resolution TAPNext) and its input resolution."""
     tapnext_torch = _tapnext_module()
     if checkpoint in CHECKPOINTS:
         name, resolution, *_ = CHECKPOINTS[checkpoint]
-        path = WEIGHTS / name
+        path = Path(root) / name
         if not path.is_file():
             raise FileNotFoundError(f"{path}: missing (xblick-tapnext downloads it at its start, or with "
                                     "--download-only)")

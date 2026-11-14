@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.2, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.3, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
@@ -12,7 +12,7 @@ tests): AGENTS.md of the core repository (`github.com/xblick/xblick`).
 
 ```bash
 tools/setup.sh                              # submodule, uv sync --frozen, --download-only for 256 and 512 (2.5 GB each)
-.venv/bin/python -m pytest -q               # 23 tests; test_model.py needs a CUDA device and weights/
+.venv/bin/python -m pytest -q               # test_model.py needs a CUDA device and the checkpoints in ~/.cache/xblick/tapnext
 .venv/bin/python -m pytest -q tests/test_weights.py  # CPU, 4 s: the node's files and its start up to the weights (the download: the core's tests)
 .venv/bin/xblick-tapnext --download-only --checkpoint 256   # the checkpoint if missing, SHA-256 checked, exit 0
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout
@@ -35,6 +35,11 @@ tools/check_references.sh                   # no internal references (patterns i
 
 ## Rules
 
+- Files: the weights are in the node's cache directory (`xblick.paths.cache_dir("tapnext")`, `~/.cache/xblick/tapnext`), never in
+  the checkout. `weights.STORE = Store(PROG, node=NODE, ..., former=[FORMER])`, `Weight` paths relative to its root;
+  `store = weights.store_for(parser, args)` (`--weights-dir`) for `download_only`, `ensure` and `fail`, with
+  `options=weights.options(args)`; model code takes its paths from `store.root`. `FORMER` (the checkout's `weights/`) is never
+  read: the store prints the command that moves it. The core's `docs/reference/files.md` has the rule.
 - Import tapnet from the submodule (`third_party/tapnet`, fixed commit; `model._tapnext_module` puts it on
   `sys.path`), only its torch TAPNext. Do not install the package's JAX dependencies. Copy nothing of it here.
 - The cloud layout is a contract (docs/tracks.md table, `tests/test_tracks.py` checks it): field order and types,
@@ -45,7 +50,7 @@ tools/check_references.sh                   # no internal references (patterns i
 - The node works offline when its checkpoint is there. Weights: `weights.py` is the one list (`CHECKPOINTS`: file,
   resolution, URL, SHA-256, size; `model.py` imports it). `weights.STORE.ensure` runs at the start before the model loads;
   `--download-only` runs it alone. File there: no network, no file written (`test_weights.py` checks it). Keep it so.
-- Downloads: `<name>.part` in `weights/`, renamed after the SHA-256 check, under the lock `weights/.download.lock`.
+- Downloads: `<name>.part` in ~/.cache/xblick/tapnext, renamed after the SHA-256 check, under the lock `.download.lock` there.
   Never let a partial or unchecked file get its final name. No fallbacks. Never clone tapnet at run time.
 - README.md and docs/ are the documentation of record. 120 columns.
 
@@ -97,7 +102,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | `src/xblick_tapnext/queries.py` | queryable request parsing and the `xblick-tapnext-queries` client |
 | `src/xblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
 | `third_party/tapnet` | DeepMind's tapnet (submodule) |
-| `weights/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (downloaded by the node), `.download.lock`; not in git |
+| `~/.cache/xblick/tapnext/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (downloaded by the node), `.download.lock`: the node's cache directory. The checkout's `weights/` is the former place. |
 | `tests/` | `test_tracks.py`, `test_weights.py` (CPU), `test_model.py` (GPU) |
 | `docs/` | tracks, performance, design |
 
@@ -113,5 +118,5 @@ tools/check_references.sh                   # no internal references (patterns i
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
 | `--max-offset-ms` | half the depth's frame period |
 | `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
-| Core | `xblick>=0.5.3,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
-| Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected) |
+| Core | `xblick>=0.5.5,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
+| Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected), `XBLICK_HOME`, `XDG_CACHE_HOME` (cache directory) |

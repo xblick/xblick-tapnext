@@ -1,6 +1,6 @@
 [project]
 name = "xblick-tapnext"
-version = "0.2.2"
+version = "0.2.3"
 description = "TAPNext++ (DeepMind's online point tracker) as a Durchblick node: points of SAM 3's objects followed in 2D and 3D"
 readme = "README.md"
 license = "Apache-2.0"
@@ -11,7 +11,7 @@ dependencies = [
     # xblick: the core (durchblick up to 0.3, blick in 0.4). The node needs what Durchblick 0.3.64 has: compressed point
     # clouds (0.3.64), RVL depth (0.3.62), ring keys with the host (0.3.59), the options as parameters and the services
     # in a daemon thread (0.3.56), a frame's partners read with it, the nearest partner by default (0.3.44)
-    "xblick>=0.5.3,<0.6",
+    "xblick>=0.5.5,<0.6",
     "torch>=2.10",
     "torchvision",  # TAPNext's ViT blocks (torchvision.models.vision_transformer.EncoderBlock)
     "einops>=0.8",

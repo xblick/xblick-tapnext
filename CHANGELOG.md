@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3 (2026-11-14)
+
+- The weights moved out of the checkout into the node's cache directory, `~/.cache/xblick/tapnext/`. `XBLICK_HOME` and
+  `XDG_CACHE_HOME` move it, and `--weights-dir DIR` names another directory. Weights at the former place, the
+  checkout's `weights/`, are not used. The node prints the command that moves them. In the checkout it is
+  `mkdir -p ~/.cache/xblick && mv weights ~/.cache/xblick/tapnext`.
+- `--weights-dir DIR` is a new start option and a read-only parameter.
+- The message about a missing file names the full download command (`xblick-tapnext --download-only --checkpoint 256`).
+- The node needs `xblick>=0.5.5,<0.6`.
+- `model.load` takes the weights' directory (`weights.STORE.root`, or `--weights-dir`'s).
+
 ## 0.2.2 (2026-11-14)
 
 - The download of the weights is the core's `xblick.weights` (xblick 0.5.3). The node's own copy of that code is

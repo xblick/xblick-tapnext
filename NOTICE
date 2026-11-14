@@ -9,6 +9,6 @@ This repository contains no code of the following projects. tools/setup.sh fetch
   submodule third_party/tapnet at a fixed commit. Copyright 2022-2026 Google LLC. Apache License, Version 2.0
   (third_party/tapnet/LICENSE and the section "License and Disclaimer" of third_party/tapnet/README.md).
 - The TAPNext++ checkpoints tapnextpp_ckpt.pt (256) and tapnextpp_512.ckpt (512), which the node downloads into
-  weights/. Apache
+  its cache directory (~/.cache/xblick/tapnext). Apache
   License, Version 2.0, as third_party/tapnet/README.md ("License and Disclaimer") and
   third_party/tapnet/tapnet/tapnextpp/README.md ("License") state for the checkpoints released and linked there.

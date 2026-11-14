@@ -178,6 +178,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--device` | `cuda` | The GPU of the node. |
 | `--no-download` | off | End at once when the checkpoint is missing, and name it. The node downloads nothing. |
 | `--download-only` | off | Download the missing checkpoint of `--checkpoint`, check its SHA-256 and end. The node needs no camera, Zenoh router or GPU for it, and `--camera` may be left out. |
+| `--weights-dir DIR` | the cache directory | The directory of the weights, in place of the node's cache directory `~/.cache/xblick/tapnext/`. A start option, read-only as a parameter. |
 | `--max-hz` | every frame | The highest number of colour frames per second. `0` or `none` also takes every frame. |
 | `--local` | `auto` | The transport for a camera on the same host: `auto`, `shm` or `cuda`. |
 | `--connect`, `--listen`, `--config` | the router of the PC | The Zenoh session, as for every Durchblick program. |
