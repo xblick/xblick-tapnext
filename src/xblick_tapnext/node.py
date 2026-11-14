@@ -79,7 +79,7 @@ def main(argv=None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--camera", required=True,
                         help="CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME], e.g. "
-                             "test/camera:depth=depth_to_color or robot/rc_visard:color=left:depth=ffs/depth; "
+                             "test/camera:depth=depth_to_color or cam/rc_visard:color=left:depth=ffs/depth; "
                              "the depth in the colour camera's geometry (16UC1 mm or 32FC1 m), the segmenter a "
                              "xblick-sam3 instance on the colour stream")
     parser.add_argument("--no-depth", action="store_true", help="2D only: no depth stream, x, y, z NaN")

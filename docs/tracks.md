@@ -25,8 +25,8 @@ Examples of camera names:
 
 | Camera | Argument |
 | --- | --- |
-| Azure Kinect | `test/camera:depth=depth_to_color` |
-| rc_visard, with the depth of xblick-fast-foundationstereo | `robot/rc_visard:color=left:depth=ffs/depth` |
+| Azure Kinect | `cam/azurekinect:depth=depth_to_color` |
+| rc_visard, with the depth of xblick-fast-foundationstereo | `cam/rc_visard:color=left:depth=ffs/depth` |
 
 With `--no-depth` the node tracks in 2D only. With `--no-segmenter` it follows only points that you give by hand.
 
