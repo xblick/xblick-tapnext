@@ -130,7 +130,7 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 ## Limits
 
-- Version 0.2.3. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
+- Version 0.2.4. We tested the node on TUM RGB-D with ground truth and with xblick-sam3 on a replayed RGB-D
   sequence. We have not tested it on a robot.
 - We have not measured the speed on the GPUs of a robot.
 - The node publishes the state of each track per frame. A consumer builds the trajectory of a track from its id.
@@ -155,3 +155,64 @@ checkpoints are under Apache 2.0 as well, as `tapnet/tapnextpp/README.md` in the
 
 The code of this repository is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). [NOTICE](NOTICE) names
 the copyright holder and the licences of tapnet and the checkpoints.
+
+## Citation
+
+This node uses TAPNext++ from the repository google-deepmind/tapnet. If you use it in research, cite their work. The
+repository asks for all of these entries. The entries below are copied from [its
+README](https://github.com/google-deepmind/tapnet/blob/730cda1c730877cfedbe01bf87fb1cadb78a565d/README.md):
+
+```bibtex
+@article{doersch2022tap,
+  title={{TAP}-Vid: A Benchmark for Tracking Any Point in a Video},
+  author={Doersch, Carl and Gupta, Ankush and Markeeva, Larisa and Recasens, Adria and Smaira, Lucas and Aytar, Yusuf and Carreira, Joao and Zisserman, Andrew and Yang, Yi},
+  journal={Advances in Neural Information Processing Systems},
+  volume={35},
+  pages={13610--13626},
+  year={2022}
+}
+
+@inproceedings{doersch2023tapir,
+  title={{TAPIR}: Tracking any point with per-frame initialization and temporal refinement},
+  author={Doersch, Carl and Yang, Yi and Vecerik, Mel and Gokay, Dilara and Gupta, Ankush and Aytar, Yusuf and Carreira, Joao and Zisserman, Andrew},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={10061--10072},
+  year={2023}
+}
+
+@article{vecerik2023robotap,
+  title={{RoboTAP}: Tracking arbitrary points for few-shot visual imitation},
+  author={Vecerik, Mel and Doersch, Carl and Yang, Yi and Davchev, Todor and Aytar, Yusuf and Zhou, Guangyao and Hadsell, Raia and Agapito, Lourdes and Scholz, Jon},
+  journal={International Conference on Robotics and Automation},
+  pages={5397--5403},
+  year={2024}
+}
+
+@article{doersch2024bootstap,
+  title={{BootsTAP}: Bootstrapped Training for Tracking-Any-Point},
+  author={Doersch, Carl and Luc, Pauline and Yang, Yi and Gokay, Dilara and Koppula, Skanda and Gupta, Ankush and Heyward, Joseph and Rocco, Ignacio and Goroshin, Ross and Carreira, Jo{\~a}o and Zisserman, Andrew},
+  journal={Asian Conference on Computer Vision},
+  year={2024}
+}
+
+@article{koppula2024tapvid,
+  title={{TAPVid}-{3D}: A Benchmark for Tracking Any Point in {3D}},
+  author={Koppula, Skanda and Rocco, Ignacio and Yang, Yi and Heyward, Joe and Carreira, Jo{\~a}o and Zisserman, Andrew and Brostow, Gabriel and Doersch, Carl},
+  journal={Advances in Neural Information Processing Systems},
+  year={2024}
+}
+
+@article{zholus2025tapnext,
+  title={TAPNext: Tracking Any Point (TAP) as Next Token Prediction},
+  author={Zholus, Artem and Doersch, Carl and Yang, Yi and Koppula, Skanda and Patraucean, Viorica and He, Xu Owen and Rocco, Ignacio and Sajjadi, Mehdi S. M. and Chandar, Sarath and Goroshin, Ross},
+  journal={arXiv preprint arXiv:2504.05579},
+  year={2025}
+}
+
+@article{allen2025trajan,
+  title={Direct Motion Models for Assessing Generated Videos},
+  author={Allen, Kelsey and Doersch, Carl and Zhou, Guangyao and Suhail, Mohammed and Driess, Danny and Rocco, Ignacio and Rubanova, Yulia and Kipf, Thomas and Sajjadi, Mehdi S. M. and Murphy, Kevin and Carreira, Joao and van Steenkiste, Sjoerd},
+  journal={arXiv preprint},
+  year={2025}
+}
+```

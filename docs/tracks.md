@@ -121,13 +121,16 @@ Rules for `points`:
 
 - `stamp` is the stamp of the colour frame of the points, in nanoseconds. The frame must be one of the node's last
   `--history` frames. Without `stamp`, the points refer to the newest frame.
-- The node answers once the points are in the tracker, which is after the next frame.
+- The node answers once the points are in the tracker, which is after the next frame, and within 2 s. When the
+  model is busy for longer, or no colour frame comes, it answers with an error after 2 s and makes no tracks of the
+  points.
 - The answer is `{"track_ids": [...], "stamp": ...}`. It has one track id per point, and the stamp of the frame
   into which the node put the points. An id is null for a point that the tracker did not see in that frame.
 - The tracks have `object_id` 0. They end by the same rules as all tracks.
 
-The node answers the other two requests at once, with its state. It answers a bad request with an error that
-states the reason.
+The node answers a query for the state and the other two requests at once, also while the model works on a frame.
+It answers `source` and `clear` with its state as it is from the next frame on, and the frame loop applies them
+then. It answers a bad request with an error that states the reason. The queryable exists once the model is loaded.
 
 The client `xblick-tapnext-queries` sends these queries.
 
@@ -166,7 +169,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--camera` | required | The camera, as described under "Inputs". |
 | `--no-depth` | off | 2D only. The node reads no depth stream, and `x, y, z` are NaN. |
 | `--no-segmenter` | off | No segmenter. The node follows only points given by hand. |
-| `--max-offset-ms` | half the depth's frame period | The largest difference between the stamps of a colour frame and its depth frame. `0` demands equal stamps. |
+| `--max-offset-ms` | 20 | The largest difference between the stamps of a colour frame and its depth frame. A colour frame without a depth frame that close is skipped and counted. `0` demands equal stamps. The value covers the cameras that we use: an Azure Kinect stamps the colour and the depth of one capture up to 17 ms apart, and the rc_visard gives a depth frame the stamp of its left image. |
 | `--node` | `tapnext` | The part of the topic names after the camera. |
 | `--points-per-object` | 32 | The number of points with which the node follows an object. Live: it changes while the node runs. |
 | `--forget` | 6 | The seconds for which a track may be hidden, or its object unseen, before it ends. Live: it changes while the node runs. |
@@ -175,7 +178,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--checkpoint` | `256` | `256` or `512`, the input resolution at which DeepMind fine-tuned the checkpoint. You can also give a `.pt` file of a 256 checkpoint. |
 | `--compile MODE` | off | Compile the network with `torch.compile` in this mode during the first frames. |
 | `--history` | 60 | The number of frames that the node keeps. Results of the segmenter and queries refer to them by stamp. |
-| `--device` | `cuda` | The GPU of the node. |
+| `--device` | `cuda` | The GPU of the node: `cuda` is GPU 0, `cuda:N` is GPU N. A GPU that cannot be used ends the node with one line. |
 | `--no-download` | off | End at once when the checkpoint is missing, and name it. The node downloads nothing. |
 | `--download-only` | off | Download the missing checkpoint of `--checkpoint`, check its SHA-256 and end. The node needs no camera, Zenoh router or GPU for it, and `--camera` may be left out. |
 | `--weights-dir DIR` | the cache directory | The directory of the weights, in place of the node's cache directory `~/.cache/xblick/tapnext/`. A start option, read-only as a parameter. |

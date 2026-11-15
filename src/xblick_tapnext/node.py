@@ -4,7 +4,7 @@ points of a segmenter's objects (xblick-sam3's instances), lifted to 3D with the
     xblick-tapnext --camera cam/azurekinect:depth=depth_to_color [--no-depth] [--no-segmenter] \\
                        [--node tapnext] [--points-per-object 32] [--forget 6] \\
                        [--max-tracks 1024] [--margin 4] [--checkpoint 256 | 512 | FILE] [--compile MODE] \\
-                       [--history 60] [--max-offset-ms 0] [--local shm|cuda] [--no-download]
+                       [--history 60] [--max-offset-ms 20] [--local shm|cuda] [--no-download]
                        [--connect ...] [--listen ...] [--config FILE]   (default: the PC's Zenoh router)
 
 The camera is Durchblick's CameraSpec, ``CAMERA[:color=NAME][:depth=NAME][:segmenter=NAME]`` (defaults color,
@@ -21,12 +21,13 @@ the frame and in its camera frame:
   image; 0 given by hand), visible (uint8: 1 the tracker sees it in this frame). Height 1, width the number of tracks
   (0: an empty cloud), in the order of their track ids.
 
-Tracks begin on the segmenter's objects (seeding.py: --points-per-object spread over its mask, --margin inside it) or
-by hand over the queryable ``<camera>/<node>/queries`` (queries.py), which also switches the seeding and clears the
-tracks; they end as tracks.py tells (hidden or their object unseen for --forget seconds, drifted out of their mask). A
-segmenter's mask comes some frames after its frame: its new points are followed from that frame to the newest in a
-state of their own first (model.Catchup), then go into the tracker's. Frames per second, the time a frame takes,
-tracks and visible tracks go to ``<camera>/diagnostics`` (status ``<node>``) once a second.
+Tracks begin on the segmenter's objects (seeding.py: --points-per-object spread over its mask, --margin inside it) or by
+hand over the queryable ``<camera>/<node>/queries`` (queries.py), which also switches the seeding and clears the tracks
+(answered at once, also while the model works; points within QUERY_WAIT_S); they end as tracks.py tells (hidden or their
+object unseen for --forget seconds, drifted out of their mask). A segmenter's mask comes some frames after its frame:
+its new points are followed from that frame to the newest in a state of their own first (model.Catchup), then go into
+the tracker's. Frames per second, the time a frame takes, tracks and visible tracks go to ``<camera>/diagnostics``
+(status ``<node>``) once a second.
 
 Weights (weights.py; in the node's cache directory ~/.cache/xblick/tapnext, or --weights-dir): a missing checkpoint is
 downloaded at the start, before the model loads; --no-download ends the node instead. ``xblick-tapnext --download-only
@@ -60,7 +61,17 @@ FIELDS = [PointField("x", 0, PointField.FLOAT32), PointField("y", 4, PointField.
           PointField("z", 8, PointField.FLOAT32), PointField("u", 12, PointField.FLOAT32),
           PointField("v", 16, PointField.FLOAT32), PointField("track_id", 20, PointField.UINT32),
           PointField("object_id", 24, PointField.UINT16), PointField("visible", 26, PointField.UINT8)]
-QUERY_WAIT_S = 2.0  # how long a points query waits for a frame before it is answered with an error
+QUERY_WAIT_S = 2.0  # a points query is answered within this: its track ids, or an error and no tracks
+MAX_OFFSET_MS = 20.0  # --max-offset-ms: one capture's colour and depth (an Azure Kinect: up to 17 ms apart), not two
+
+
+def parse_device(text: str) -> str:
+    """``--device``: cuda (GPU 0) or cuda:N, as ``cuda:N``."""
+    if text == "cuda":
+        return "cuda:0"
+    if text.startswith("cuda:") and text[5:].isdigit():
+        return text
+    raise argparse.ArgumentTypeError(f"{text!r}: cuda (GPU 0) or cuda:N")
 
 
 def cloud(xyz: np.ndarray, uv: np.ndarray, track_id: np.ndarray, object_id: np.ndarray, visible: np.ndarray):
@@ -90,11 +101,11 @@ def main(argv=None) -> int:
                              "xblick-sam3 instance on the colour stream")
     parser.add_argument("--no-depth", action="store_true", help="2D only: no depth stream, x, y, z NaN")
     parser.add_argument("--no-segmenter", action="store_true", help="no segmenter: points by hand only")
-    parser.add_argument("--max-offset-ms", type=float, default=None,
-                        help="pair a colour frame with the nearest depth frame this close (default: half the "
-                             "depth's frame period, measured: each colour frame with its nearest depth frame, as a "
-                             "camera whose depth is stamped apart from its colour needs, one measured Azure Kinect: "
-                             "11-17 ms); 0: only equal stamps")
+    parser.add_argument("--max-offset-ms", type=float, default=MAX_OFFSET_MS,
+                        help="pair a colour frame with the nearest depth frame at most this far apart, else skip it "
+                             "(counted); 20 covers the Azure Kinect's colour and depth of one capture (up to 17 ms "
+                             "apart) and the rc_visard's (equal stamps), and pairs no neighbouring frame of a 30 or "
+                             "15 Hz depth stream (default: %(default)s); 0: only equal stamps")
     parser.add_argument("--node", default="tapnext", help="the results' part of the topic: <camera>/<node>/...")
     parser.add_argument("--points-per-object", type=int, default=32, help="points an object is followed by")
     parser.add_argument("--forget", type=float, default=6.0,
@@ -111,7 +122,8 @@ def main(argv=None) -> int:
                              "at the first frames, about a minute)")
     parser.add_argument("--history", type=int, default=60,
                         help="frames kept for the segmenter's results and queries to refer to (by stamp)")
-    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--device", type=parse_device, default="cuda:0",
+                        help="the GPU: cuda (GPU 0) or cuda:N; a GPU that cannot be used is an error (default: cuda:0)")
     xblick_weights.add_arguments(parser)  # --download-only (a mode of the command line), --no-download
     add_arguments(parser)  # --connect, --listen, --config; default: the PC's Zenoh router
     # --max-hz: every frame by default (a tracker follows best frame by frame)
@@ -130,7 +142,7 @@ def main(argv=None) -> int:
     params.declare_options(parser, args, live=LIVE, leave_out=("camera", "node", "download_only"))
     params.check_overrides()
     if args.points_per_object < 1 or args.max_tracks < 1 or args.forget <= 0 or args.history < 2 or args.margin < 0 \
-            or (args.max_offset_ms is not None and args.max_offset_ms < 0):
+            or args.max_offset_ms < 0:
         parser.error("--points-per-object, --max-tracks: at least 1; --forget: positive; --history: at least 2; "
                      "--margin, --max-offset-ms: not negative")
     try:
@@ -163,6 +175,13 @@ def main(argv=None) -> int:
     from .tracks import Tracks  # noqa: PLC0415
 
     device = torch.device(args.device)
+    if device.index >= torch.cuda.device_count():  # no CUDA, or not that many GPUs: one line, never another device
+        print(f"xblick-tapnext: --device {args.device}: no such GPU ({torch.cuda.device_count()} visible)",
+              file=sys.stderr, flush=True)
+        params.close()
+        session.close()
+        return 1
+    torch.cuda.set_device(device)
     net, resolution = load(args.checkpoint, device, store.root)
     if args.compile is not None:
         net = torch.compile(net, mode=args.compile)
@@ -179,7 +198,7 @@ def main(argv=None) -> int:
 
     color = reader("color", True, args.max_hz)  # --max-hz limits the colour frames, the depth follows them
     # the depth nearest each colour stamp within --max-offset-ms, decoded only for the colour frames tracked
-    max_offset_ns = None if args.max_offset_ms is None else round(args.max_offset_ms * 1e6)
+    max_offset_ns = round(args.max_offset_ms * 1e6)
     depth = (PartnerHistory(subscriber("depth", True), args.history, max_offset_ns, wake.set)
              if "depth" in keys else None)
     instances = reader("instances", False) if "instances" in keys else None
@@ -188,7 +207,6 @@ def main(argv=None) -> int:
         detections_history = StampedHistory(args.history, wake.set)
         detections = db.DetectionSubscriber(session, keys["detections"],
                                             lambda m: detections_history.put(m.header.stamp.to_ns(), m))
-    queryable = session.declare_queryable(f"{camera}/{args.node}/{QUERIES}")  # answered between frames
     tracks_pub = None  # with the first frame: its camera frame
     report = node.Reporter(session, camera, args.node, "xblick-tapnext", max_hz=args.max_hz)
     report.watch(color)
@@ -196,7 +214,7 @@ def main(argv=None) -> int:
     source = "sam3" if instances is not None else "none"
     print(f"xblick-tapnext: {' + '.join(keys.values())} -> {camera}/{args.node}/tracks (TAPNext++ "
           f"{args.checkpoint}, input {resolution} x {resolution}, {args.max_tracks} tracks at most, "
-          f"{args.points_per_object} per object)", flush=True)
+          f"{args.points_per_object} per object); model on {args.device}, lifting on the CPU", flush=True)
 
     state = {}  # the camera's model and everything made for it (reset when it changes)
 
@@ -208,10 +226,16 @@ def main(argv=None) -> int:
                      prepared=OrderedDict(), positions=StampedHistory(args.history), seen=-1)
         state["catchup"] = Catchup(state["tracker"])
 
-    seeds = []  # (stamp, object id, (k, 2) pixels of that frame, query or None)
-    waiting_queries = []  # (query, its seed) answered once the seed is in the tracker
-    newest_frame_at = time.monotonic()
+    seeds = []  # (stamp, object id, (k, 2) pixels of that frame, Waiting or None)
     done = -1  # the stamp of the newest frame looked at
+    # the queryable answers in Zenoh's thread from ``view``, which the loop keeps; what it accepts goes to ``inbox``
+    # for the loop; a points query waits in ``points_waiting`` (answered by the loop, or by the watchdog at its
+    # deadline)
+    query_lock = threading.Lock()
+    view = {"state": None, "kept": set(), "done": -1}
+    inbox = []  # ("source", value), ("clear", None), ("points", Waiting)
+    points_waiting = []
+    stop_watchdog = threading.Event()
 
     def describe() -> dict:
         tracks = state.get("tracks")
@@ -225,33 +249,94 @@ def main(argv=None) -> int:
             state["tracker"].free(torch.as_tensor(slots, device=device))
             state["tracks"].end(slots)
 
+    key = f"{camera}/{args.node}/{QUERIES}"
+
+    class Waiting:
+        """A points query until the loop put its points in the tracker (answered with their track ids) or its
+        deadline passed (the watchdog answers with an error, and the loop then makes no tracks of it)."""
+
+        def __init__(self, query, stamp, points):
+            self.query, self.stamp, self.points = query, stamp, points
+            self.deadline, self.answered = time.monotonic() + QUERY_WAIT_S, False
+
+        def claim(self) -> bool:
+            """Takes the answer on (under query_lock) unless it is taken already; False then."""
+            if self.answered:
+                return False
+            self.answered = True
+            return True
+
+        def send(self, text: str | None, error: str | None = None):
+            """The answer (after claim), and the query dropped."""
+            if error is None:
+                self.query.reply(key, text)
+            else:
+                self.query.reply_err(error)
+            self.query = None
+
+    def keep_view():
+        """The state the queryable answers from: after each frame and each change (in this thread)."""
+        with query_lock:
+            view.update(state=describe(), kept=set(state.get("prepared", ())), done=done)
+
     def answer(query):
-        nonlocal source
-        key = f"{camera}/{args.node}/{QUERIES}"
+        """Answers at once, in Zenoh's thread: the state, or a request checked and accepted (the loop applies it
+        before the next frame; the answer is the state from then on); points are answered by the loop or the
+        watchdog within QUERY_WAIT_S."""
         try:
             payload = query.payload.to_string() if query.payload is not None else ""
             request = parse(json.loads(payload)) if payload.strip() else {}
-            if "source" in request:
-                if request["source"] == "sam3" and instances is None:
-                    raise ValueError("the node has no segmenter (--no-segmenter)")
-                source = request["source"]
-            elif "clear" in request:
+            with query_lock:
+                reply = dict(view["state"])
+                if "source" in request:
+                    if request["source"] == "sam3" and instances is None:
+                        raise ValueError("the node has no segmenter (--no-segmenter)")
+                    inbox.append(("source", request["source"]))
+                    reply["source"] = request["source"]
+                elif "clear" in request:
+                    inbox.append(("clear", None))
+                    reply.update(tracks=0, objects=[])
+                elif "points" in request:
+                    if view["done"] < 0:
+                        raise ValueError("no frame tracked yet")
+                    stamp = request["stamp"] if request["stamp"] is not None else view["done"]
+                    if stamp not in view["kept"]:
+                        raise ValueError(f"no tracked frame of stamp {stamp} (the node keeps its last {args.history})")
+                    entry = Waiting(query, stamp, request["points"])
+                    inbox.append(("points", entry))
+                    points_waiting.append(entry)
+                    return  # answered with the track ids once they are in the tracker, or with an error in time
+            query.reply(key, json.dumps(reply))
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            query.reply_err(f"{type(error).__name__}: {error}")
+
+    def watchdog():
+        """Answers points queries at their deadline with an error (the model was busy, or no frame came)."""
+        while not stop_watchdog.wait(0.02):
+            now = time.monotonic()
+            with query_lock:
+                for entry in [w for w in points_waiting if w.deadline <= now and w.claim()]:
+                    entry.send(None, f"the points were not in the tracker within {QUERY_WAIT_S} s (the model was "
+                                       "busy, or no colour frame came): no tracks were made of them")
+                points_waiting[:] = [w for w in points_waiting if not w.answered]
+
+    def apply_requests():
+        """The requests accepted on the queryable, applied in this thread (between frames)."""
+        nonlocal source
+        with query_lock:
+            taken = list(inbox)
+            inbox.clear()
+        for what, value in taken:
+            if what == "source":
+                source = value
+            elif what == "clear":
                 if "tracks" in state:
                     end(np.nonzero(state["tracks"].used)[0])
                 seeds.clear()
-            elif "points" in request:
-                if "tracks" not in state:
-                    raise ValueError("no frame tracked yet")
-                stamp = request["stamp"] if request["stamp"] is not None else done
-                if stamp not in state["prepared"]:
-                    raise ValueError(f"no tracked frame of stamp {stamp} (the node keeps its last {args.history})")
-                seed = (stamp, 0, torch.tensor(request["points"], device=device), query)
-                seeds.append(seed)
-                waiting_queries.append((query, seed, time.monotonic()))
-                return  # answered with the track ids, after the next frame
-            query.reply(key, json.dumps(describe()))
-        except (ValueError, TypeError, json.JSONDecodeError) as error:
-            query.reply_err(f"{type(error).__name__}: {error}")
+            elif not value.answered:  # points: not answered by the watchdog meanwhile
+                seeds.append((value.stamp, 0, torch.tensor(value.points, device=device), value))
+        if taken:
+            keep_view()
 
     def frame_to_track():
         """The newest stamp with a colour frame (and its depth) not yet tracked, and how many newer than the last
@@ -267,12 +352,14 @@ def main(argv=None) -> int:
         replies = []
         usable = []
         for seed in seeds:
+            if seed[3] is not None and seed[3].answered:
+                continue  # its query was answered with an error at its deadline: no tracks of it
             if seed[0] in prepared:
                 usable.append(seed)
             else:
                 counts["seeds_too_old"] += 1
                 if seed[3] is not None:
-                    replies.append((seed[3], [], False))
+                    replies.append((seed[3], [], False, []))
         seeds.clear()
         if not usable:
             return replies
@@ -310,7 +397,7 @@ def main(argv=None) -> int:
             counts["seeded"] += len(slots)
             if query is not None:
                 it = iter(started.tolist())
-                replies.append((query, [next(it) if k else None for k in keep], True))
+                replies.append((query, [next(it) if k else None for k in keep], True, slots))
         counts["catchup_frames"] += len(stamps)
         return replies
 
@@ -345,6 +432,16 @@ def main(argv=None) -> int:
         metres = tensors.depth_metres(depth_frame, device) if depth_frame is not None else None
         replies = put_seeds(stamp, f, height, width)
         yx, visible = tracker.step(f)
+        answers = []  # the points queries: claimed now (sent after the frame), unless the watchdog answered them
+        with query_lock:
+            for entry, ids, ok, slots in replies:
+                if not entry.claim():
+                    end(slots)  # answered with an error at its deadline: no tracks of these points
+                elif ok:
+                    answers.append((entry, json.dumps({"track_ids": ids, "stamp": stamp}), None))
+                else:
+                    answers.append((entry, None, f"the frame {entry.stamp} is no longer kept"))
+            points_waiting[:] = [w for w in points_waiting if not w.answered]
         prepared[stamp] = f
         while len(prepared) > args.history:
             prepared.popitem(last=False)
@@ -376,12 +473,7 @@ def main(argv=None) -> int:
         counts["tracks"] += len(order)
         counts["visible"] += int(visible[order].sum())
         counts["busy"] += time.monotonic() - started
-        for query, ids, ok in replies:
-            waiting_queries[:] = [w for w in waiting_queries if w[0] is not query]
-            if ok:
-                query.reply(f"{camera}/{args.node}/{QUERIES}", json.dumps({"track_ids": ids, "stamp": stamp}))
-            else:
-                query.reply_err(f"the frame {stamp} is no longer kept")
+        return answers
 
     def check_segmenter():
         """The newest segmenter result of a tracked frame not looked at yet: drift, presence and new points."""
@@ -447,29 +539,28 @@ def main(argv=None) -> int:
             state["tracks"].forget_ns = round(params["forget"] * 1e9)
         args.points_per_object, args.forget = params["points_per_object"], params["forget"]
 
+    keep_view()
+    queryable = session.declare_queryable(key, answer)  # answered at once, in Zenoh's thread
+    guard = threading.Thread(target=watchdog, name="queries", daemon=True)
+    guard.start()
     try:
         while True:
             wake.wait(0.05)
             wake.clear()
             apply_parameters()
+            apply_requests()
             for history in (color, depth, instances):
                 if history is not None:
                     history.check()
             if detections is not None:
                 detections.check()
-            while (query := queryable.try_recv()) is not None:
-                answer(query)
             stamp, skipped = frame_to_track()
             if stamp is not None:
-                newest_frame_at = time.monotonic()
-                track(stamp, skipped)
+                answers = track(stamp, skipped)
+                keep_view()  # before the points' answers: a state asked after them has their tracks
+                for entry, text, error in answers or ():
+                    entry.send(text, error)
             check_segmenter()
-            if waiting_queries and time.monotonic() - newest_frame_at > QUERY_WAIT_S:
-                for query, seed, _ in waiting_queries:
-                    query.reply_err(f"no colour frame for {QUERY_WAIT_S} s")
-                    if seed in seeds:
-                        seeds.remove(seed)
-                waiting_queries.clear()
             if report.due():
                 d, seconds = report.take()
                 n, ms = max(d["frames"], 1), d["busy"] / max(d["frames"], 1) * 1e3
@@ -505,6 +596,8 @@ def main(argv=None) -> int:
             if closable is not None:
                 closable.close()
         queryable.undeclare()
+        stop_watchdog.set()
+        guard.join(timeout=1.0)
         params.close()
         session.close()
     return 0

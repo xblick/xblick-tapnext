@@ -12,9 +12,10 @@ A query without payload is answered with the node's state; one with a JSON paylo
     {"source": "sam3"}            # seed the objects of the camera's segmenter, or "none": no new seeds
     {"clear": true}               # end all tracks
 
-``points`` is answered once the points are in the tracker (after the next frame): ``{"track_ids": [...], "stamp":
-<the frame they were put in>}``, a track id per point, null for a point the tracker did not see in that frame. Its
-tracks have object_id 0 and end as all do (README, "Tracks"). The others are answered at once, with the state.
+``points`` is answered once the points are in the tracker (after the next frame), within 2 s: ``{"track_ids": [...],
+"stamp": <the frame they were put in>}``, a track id per point, null for a point the tracker did not see in that
+frame; after 2 s (the model busy, or no frame) an error, and no tracks are made of them. Its tracks have object_id 0
+and end as all do (README, "Tracks"). The others are answered at once, with the state from the next frame on.
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ def parse(request) -> dict:
 
 def main(argv=None) -> int:
     from xblick import topics  # noqa: PLC0415
-    from xblick.session import add_arguments, open_from_args  # noqa: PLC0415
+    from xblick.session import add_arguments, open_from_args, replies  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(prog="xblick-tapnext-queries", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -64,7 +65,7 @@ def main(argv=None) -> int:
     parser.add_argument("--node", default="tapnext", help="the node's part of the topic: <camera>/<node>/queries")
     parser.add_argument("--json", help="the request (above); without: the node's state")
     parser.add_argument("--timeout", type=float, default=10.0,
-                        help="seconds to wait for the answer (the node answers between frames)")
+                        help="seconds to wait for the answer (the node answers at once, points within 2 s)")
     add_arguments(parser)
     args = parser.parse_args(argv)
     key = f"{topics.check_name(args.camera)}/{args.node}/{QUERIES}"
@@ -75,18 +76,19 @@ def main(argv=None) -> int:
     session = open_from_args(args)
     try:
         # right after the session opens a query reaches no queryable yet: asked again until an answer or the timeout
-        replies, end = [], time.monotonic() + args.timeout
-        while not replies and (remaining := end - time.monotonic()) > 0:
-            replies = list(session.get(key, payload=payload, timeout=remaining))
-            if not replies:
+        # replies(): Zenoh does not always end a query at its timeout (the core's AGENTS.md, "Traps")
+        got, end = [], time.monotonic() + args.timeout
+        while not got and (remaining := end - time.monotonic()) > 0:
+            got = replies(session, key, remaining, payload=payload)
+            if not got:
                 time.sleep(min(ASK_AGAIN_S, max(0.0, end - time.monotonic())))
     finally:
         session.close()
-    if not replies:
+    if not got:
         print(f"xblick-tapnext-queries: no answer on {key} within {args.timeout} s", file=sys.stderr)
         return 1
     failed = False
-    for reply in replies:
+    for reply in got:
         if reply.ok is not None:
             print(reply.ok.payload.to_string())
         else:

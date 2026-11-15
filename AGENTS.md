@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.3, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.4, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
@@ -47,6 +47,11 @@ tools/check_references.sh                   # no internal references (patterns i
   x y z. Change it only with its readers (the core's Rerun bridge draws u, v over the image).
 - Fail fast. Missing submodule, bad queryable requests (`queries.parse` says why), slot misuse
   (`SlotTracker.add` on a used slot) raise.
+- The queryable answers in Zenoh's thread at once, from `view`, which the loop keeps after each frame; `source` and
+  `clear` go through `inbox` to the loop. A `points` query waits (`Waiting`, `points_waiting`) until the loop put its points in the
+  tracker, at most `QUERY_WAIT_S` (2 s): then the watchdog thread answers with an error, and the loop ends the tracks
+  it made of them. Never answer from the frame loop alone: a query still open at the caller's timeout gets a
+  `Timeout` reply, which a sender takes for a second node.
 - The node works offline when its checkpoint is there. Weights: `weights.py` is the one list (`CHECKPOINTS`: file,
   resolution, URL, SHA-256, size; `model.py` imports it). `weights.STORE.ensure` runs at the start before the model loads;
   `--download-only` runs it alone. File there: no network, no file written (`test_weights.py` checks it). Keep it so.
@@ -103,7 +108,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | `src/xblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
 | `third_party/tapnet` | DeepMind's tapnet (submodule) |
 | `~/.cache/xblick/tapnext/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (downloaded by the node), `.download.lock`: the node's cache directory. The checkout's `weights/` is the former place. |
-| `tests/` | `test_tracks.py`, `test_weights.py` (CPU), `test_model.py` (GPU) |
+| `tests/` | `test_tracks.py`, `test_weights.py` (CPU), `test_model.py`, `test_node.py` (GPU; `slow_step.py` slows the tracker for it) |
 | `docs/` | tracks, performance, design |
 
 ## Defaults
@@ -116,7 +121,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | Status | `tapnext` on `<camera>/diagnostics` |
 | `--points-per-object` / `--forget` / `--margin` | 32 / 6 s / 4 px |
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
-| `--max-offset-ms` | half the depth's frame period |
+| `--max-offset-ms` | 20 (fixed) |
 | `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
 | Core | `xblick>=0.5.5,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
 | Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected), `XBLICK_HOME`, `XDG_CACHE_HOME` (cache directory) |

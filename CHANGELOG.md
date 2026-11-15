@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.4 (2026-11-15)
+
+Queries answered at once, a fixed pairing offset and a fixed GPU.
+
+### Changed
+
+- Changed default: `--max-offset-ms` is a fixed 20 ms, no longer half the depth stream's measured frame period. It pairs
+  the colour and depth of one capture of the Azure Kinect (up to 17 ms apart) and of the rc_visard (equal stamps). A
+  colour frame without a depth frame that close is skipped and counted, as before.
+- `--device cuda` is GPU 0, `cuda:N` GPU N. Another value, or a GPU that cannot be used, ends the node with one line.
+- The start line says where the model computes (`model on cuda:0`).
+- README: how to cite TAPNext++.
+
+### Fixed
+
+- The queryable `queries` answers at once, also while the tracker works on a frame. `source` and `clear` apply from the
+  next frame on.
+- A `points` query is answered within 2 s: its track ids, or an error, and then no tracks are made of the points.
+- `xblick-tapnext-queries` no longer waits past its timeout when Zenoh does not end a query.
+
+Compatible with earlier clients: nothing on the wire changed.
+
 ## 0.2.3 (2026-11-14)
 
 - The weights moved out of the checkout into the node's cache directory, `~/.cache/xblick/tapnext/`. `XBLICK_HOME` and
