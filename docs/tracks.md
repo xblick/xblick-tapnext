@@ -75,9 +75,9 @@ seen = cloud[cloud["visible"] == 1]
 
 ## How a track begins
 
-**Seeding.** The node looks at each object in a result of the segmenter. If fewer than half of
-`--points-per-object` (default 32) of the object's tracks are visible inside its mask, the node adds points up to
-that number. It places a new point inside the mask, at least `--margin` (default 4) pixels from the edge. It
+**Seeding.** The node looks at each object in a result of the segmenter. If fewer than `--refill` (default 0.5)
+times `--points-per-object` (default 32) of the object's tracks are visible inside its mask, the node adds points up
+to that number. It places a new point inside the mask, at least `--margin` (default 4) pixels from the edge. It
 spreads the points: each new point is the mask pixel that is farthest from the object's existing points and from
 the new points before it. The code is in `seeding.py`.
 
@@ -85,7 +85,10 @@ the new points before it. The code is in `seeding.py`.
 tracker in the frame in which it lies on the object. The node therefore keeps the last `--history` frames
 (default 60). It follows the new points from the frame of the result to the newest frame, in a separate model
 state. Then it hands them to the tracker as points of the newest frame. It drops the points that are not visible
-there. [docs/design.md](design.md#late-masks-and-the-catch-up) explains this catch-up.
+there. All points that wait at a frame catch up in one pass, from the oldest frame among them. The pass runs over
+every `--catchup-stride`-th kept frame (default 2), counted back from the newest, and over the frame of each waiting
+result. A result whose catch-up would take more than `--max-catchup` model steps (default 30) seeds nothing; the
+node counts it. [docs/design.md](design.md#late-masks-and-the-catch-up) explains this catch-up.
 
 **By hand.** You add points through the queryable, see below.
 
@@ -103,9 +106,11 @@ The rules are in `tracks.py`. A track ends in each of these cases.
 | Cleared | You send `{"clear": true}`. |
 
 **An object with a new id keeps its tracks.** The segmenter gives an object a new id when it sees the object again
-after its own tracker lost it. The node looks at the tracks of objects that are absent from a result. If the
-tracker saw such a track inside the mask of an object in the result, the track now belongs to that object. The
-object gets new points only by the normal seeding rule.
+after its own tracker lost it, or reports part of an object as an object of its own. The node looks at the tracks
+that their object does not claim in a result: tracks of objects absent from it, and tracks that lie outside the mask
+of their object. If the tracker saw such a track inside the mask of another object in the result, the track now
+belongs to that object. The node compares at the positions of the result's own frame, not at the newest ones. The
+object gets new points only by the normal seeding rule, and the adopted tracks count.
 
 ## The queryable `<camera>/tapnext/queries`
 
@@ -154,7 +159,11 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 - the frames per second and the milliseconds per frame,
 - the tracks and the visible tracks per frame,
 - the number of seeded points,
-- the time, the points and the frames of the catch-up,
+- the time, the points and the frames of the catch-up, its passes, its deepest pass in model steps, the frames that
+  `--catchup-stride` left out and the results that `--max-catchup` dropped,
+- the objects new to the node, the objects seeded, and for these the hidden tracks, the tracks outside their mask
+  and the objects without tracks (why they needed points),
+- the tracks that ended, and the results passed over because a newer one came first,
 - the tracks that drifted and the tracks that an object with a new id adopted,
 - the hidden tracks that ended for new points,
 - the results of the segmenter,
@@ -174,6 +183,9 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--points-per-object` | 32 | The number of points with which the node follows an object. Live: it changes while the node runs. |
 | `--forget` | 6 | The seconds for which a track may be hidden, or its object unseen, before it ends. Live: it changes while the node runs. |
 | `--max-tracks` | 1024 | The highest number of tracks. These are the slots of the tracker. |
+| `--refill` | 0.5 | An object gets new points when fewer than this share of `--points-per-object` of its tracks are visible inside its mask. Adopted tracks count. Live: it changes while the node runs. |
+| `--catchup-stride` | 2 | Late points catch up over every n-th kept frame and over the frame of each result. `1` takes every frame. Live: it changes while the node runs. |
+| `--max-catchup` | 30 | The most model steps of a catch-up. A result of an older frame seeds nothing and is counted. `0`: no bound. Live: it changes while the node runs. |
 | `--margin` | 4 | The pixels that a new point keeps from the edge of its mask. A track may also be this far outside its mask. Live: it changes while the node runs. |
 | `--checkpoint` | `256` | `256` or `512`, the input resolution at which DeepMind fine-tuned the checkpoint. You can also give a `.pt` file of a 256 checkpoint. |
 | `--compile MODE` | off | Compile the network with `torch.compile` in this mode during the first frames. |

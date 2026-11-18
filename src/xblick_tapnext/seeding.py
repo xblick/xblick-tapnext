@@ -50,3 +50,12 @@ def sample(mask: torch.Tensor, n: int, have: torch.Tensor, margin: int) -> torch
         chosen.append(i)
         nearest = torch.minimum(nearest, (candidates - candidates[i]).norm(dim=1))
     return candidates[chosen]
+
+
+def grow_labels(ids: torch.Tensor, margin: int) -> torch.Tensor:
+    """An instance image (H, W) int, 0 where no object is, with each object grown by ``margin`` pixels into the pixels
+    of none (where two grow into one pixel, the larger id); the objects' own pixels keep their ids."""
+    if margin <= 0:
+        return ids
+    grown = F.max_pool2d(ids.float()[None, None], 2 * margin + 1, stride=1, padding=margin)[0, 0].to(ids.dtype)
+    return torch.where(ids != 0, ids, grown)

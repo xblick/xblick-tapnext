@@ -54,14 +54,27 @@ The node keeps the last `--history` frames (default 60). `model.Catchup` follows
 to the newest frame in a state of its own. It batches the points per frame and queries each point in its frame.
 The points then enter the tracker as points of the newest frame. The node drops the points that are hidden there.
 
+All points that wait at a frame catch up in one pass, from the oldest frame among them (`tracks.catchup_plan`).
+The pass takes every `--catchup-stride`-th kept frame, counted back from the newest, and the frame of each waiting
+result. A result whose catch-up would take more than `--max-catchup` model steps seeds nothing. The node counts it.
+
+A catch-up step costs about as much as a step of the tracker. The model's tokens are the frame's patches and the
+points, and every layer updates each token with its own recurrent state and then lets all tokens of the frame attend
+to each other. Only the patch embedding (a convolution of the frame) is the same in the tracker's state and in the
+catch-up's. Every later layer differs, because the catch-up's patch tokens start at the mask's frame and attend to
+other point tokens. The node therefore reuses nothing between the two.
+
 A result cannot seed if the node did not track its frame. This happens when the node left the frame out, or when
 the frame is older than the kept frames. The node counts such results as `seeds_too_old`.
 
 ## Objects that change their id
 
 xblick-sam3 often gives an object a new id. In 30 s of replay it gave the objects of one desk about 200 ids.
-The node therefore lets a new id adopt existing tracks. It takes the tracks of objects that are absent from a
-result (`Tracks.orphans`). If such a track lies inside the mask of a new id, that id adopts it (`Tracks.adopt`).
+The node therefore lets an object adopt existing tracks. It takes the tracks that their object does not claim in
+a result: tracks of objects absent from it, and tracks outside the mask of their object (`Tracks.unclaimed`). If
+such a track lies inside the mask of another object of the result, that object adopts it (`Tracks.adopt`). The node
+compares at the positions of the tracks in the result's own frame, which it keeps for `--history` frames, because the
+camera may have moved since.
 
 Two more rules limit the tracks. Without a free slot, the tracks that are hidden longest end
 (`Tracks.hidden_longest`). An object with more than twice `--points-per-object` tracks loses its longest hidden
@@ -144,9 +157,9 @@ tapnet package, and it copies nothing from tapnet.
 
 | File | Needs | What it checks |
 | --- | --- | --- |
-| `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
+| `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Adoption of unclaimed tracks, `--refill`, the catch-up plan (`--max-catchup`, `--catchup-stride`). Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
 | `tests/test_weights.py` | CPU, a local HTTP server | the checkpoints, their URLs and SHA-256, `--checkpoint 512` and a file of one's own, the node's `STORE`, `--download-only` and `--no-download`, a start that stops after its weights step without a GPU. The download itself: the core's tests |
-| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. |
+| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. A catch-up over every second frame against one over every frame. |
 
 ## Status and limits
 

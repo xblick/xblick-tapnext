@@ -33,9 +33,29 @@ The slots cost little.
 
 ### The cost of seeding
 
-New points catch up from the frame of their mask to the newest frame. This adds one tracker step per kept frame
-since the frame of the mask, once per seeding. [docs/design.md](design.md#late-masks-and-the-catch-up) explains the
-catch-up. In the end-to-end test below, the catch-ups took up to 0.3 s of each second.
+New points catch up from the frame of their mask to the newest frame. This adds one model step per kept frame
+since the frame of the mask, once per seeding, and a step costs about as much as a frame of the tracker: the model
+works on all patches of the frame in every step. [docs/design.md](design.md#late-masks-and-the-catch-up) explains
+the catch-up.
+
+Measured on the end-to-end replay below (TUM, xblick-sam3 on the same GPU at about 15 results per second, both
+without compiling), the catch-up took about a quarter of the node's time. Per second there were about 5 catch-up
+passes of 3 to 4 model steps each (at most 5 to 7). Most seeding was not for new objects: about 7 objects a second
+got new points, of them about 1 without any track. The others had enough tracks, but the model saw too few of them in
+the result's frame.
+
+`--catchup-stride 2` (the default) leaves out about a quarter of these steps. It did not change the accuracy of the
+points it catches up. On the same sequence we caught up 48 points with depth from 200 random frames over 3, 5 and 8
+frames and compared them with their true positions (the true poses and depth):
+
+| Catch-up | Camera | Stride 1 | Stride 2 | Stride 3 |
+| --- | --- | --- | --- | --- |
+| 5 frames | still (up to 15 deg/s) | 1.51 px | 1.47 px | 1.47 px |
+| 5 frames | moving (more than 15 deg/s) | 2.06 px | 2.02 px | 2.02 px |
+| 8 frames | moving | 2.23 px | 2.10 px | 2.12 px |
+
+The numbers are median errors. The camera turns at up to 67 deg/s in this sequence (90 % of the frames: up to
+38 deg/s).
 
 ## Accuracy against ground truth
 

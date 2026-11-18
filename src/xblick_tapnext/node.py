@@ -62,6 +62,8 @@ FIELDS = [PointField("x", 0, PointField.FLOAT32), PointField("y", 4, PointField.
           PointField("v", 16, PointField.FLOAT32), PointField("track_id", 20, PointField.UINT32),
           PointField("object_id", 24, PointField.UINT16), PointField("visible", 26, PointField.UINT8)]
 QUERY_WAIT_S = 2.0  # a points query is answered within this: its track ids, or an error and no tracks
+CATCHUP_STRIDE = 2  # --catchup-stride: on TUM no worse than 1 (docs/performance.md), a quarter fewer steps
+MAX_CATCHUP = 30  # --max-catchup: one second at 30 Hz
 MAX_OFFSET_MS = 20.0  # --max-offset-ms: one capture's colour and depth (an Azure Kinect: up to 17 ms apart), not two
 
 
@@ -87,6 +89,9 @@ def cloud(xyz: np.ndarray, uv: np.ndarray, track_id: np.ndarray, object_id: np.n
 
 # the parameters that change while the node runs (Parameters.declare_options); every other option applies at the start
 LIVE = {"points_per_object": {"range": (1, 1024, 1), "unit": "points"},
+        "refill": {"range": (0.0, 1.0, 0.05)},
+        "catchup_stride": {"range": (1, 8, 1), "unit": "frames"},
+        "max_catchup": {"range": (0, 600, 1), "unit": "steps"},
         "forget": {"range": (0.5, 600.0, 0.5), "unit": "s"},
         "margin": {"range": (0, 64, 1), "unit": "pixels"}}
 
@@ -120,6 +125,15 @@ def main(argv=None) -> int:
     parser.add_argument("--compile", default=None, metavar="MODE",
                         help="torch.compile the network in this mode (e.g. default: about twice as fast; compiles "
                              "at the first frames, about a minute)")
+    parser.add_argument("--refill", type=float, default=0.5,
+                        help="an object gets new points when fewer than this share of --points-per-object of its "
+                             "tracks are visible in its mask (tracks it adopted count)")
+    parser.add_argument("--catchup-stride", type=int, default=CATCHUP_STRIDE,
+                        help="a late mask's points catch up over every n-th kept frame (and their own): fewer model "
+                             "steps, larger steps between frames (docs/performance.md)")
+    parser.add_argument("--max-catchup", type=int, default=MAX_CATCHUP,
+                        help="the most model steps a catch-up may take: points of an older mask are dropped (counted); "
+                             "0: no bound")
     parser.add_argument("--history", type=int, default=60,
                         help="frames kept for the segmenter's results and queries to refer to (by stamp)")
     parser.add_argument("--device", type=parse_device, default="cuda:0",
@@ -142,9 +156,10 @@ def main(argv=None) -> int:
     params.declare_options(parser, args, live=LIVE, leave_out=("camera", "node", "download_only"))
     params.check_overrides()
     if args.points_per_object < 1 or args.max_tracks < 1 or args.forget <= 0 or args.history < 2 or args.margin < 0 \
-            or args.max_offset_ms < 0:
-        parser.error("--points-per-object, --max-tracks: at least 1; --forget: positive; --history: at least 2; "
-                     "--margin, --max-offset-ms: not negative")
+            or args.max_offset_ms < 0 or args.catchup_stride < 1 or args.max_catchup < 0 \
+            or not 0 <= args.refill <= 1:
+        parser.error("--points-per-object, --max-tracks, --catchup-stride: at least 1; --forget: positive; --history: "
+                     "at least 2; --margin, --max-offset-ms, --max-catchup: not negative; --refill: 0 to 1")
     try:
         spec = CameraSpec.parse(args.camera, segmenter=None if args.no_segmenter else "sam3")
     except ValueError as error:
@@ -171,8 +186,8 @@ def main(argv=None) -> int:
 
     from .lifting import Lifter  # noqa: PLC0415
     from .model import Catchup, SlotTracker, load, to_pixels  # noqa: PLC0415
-    from .seeding import grow, sample  # noqa: PLC0415
-    from .tracks import Tracks  # noqa: PLC0415
+    from .seeding import grow_labels, sample  # noqa: PLC0415
+    from .tracks import Tracks, catchup_plan  # noqa: PLC0415
 
     device = torch.device(args.device)
     if device.index >= torch.cuda.device_count():  # no CUDA, or not that many GPUs: one line, never another device
@@ -222,10 +237,12 @@ def main(argv=None) -> int:
         state.clear()
         state.update(key=(info.width, info.height, frame_id), tracker=SlotTracker(net, resolution, args.max_tracks,
                                                                                   device),
-                     tracks=Tracks(args.max_tracks, args.points_per_object, forget_ns), lifter=Lifter(info),
+                     tracks=Tracks(args.max_tracks, args.points_per_object, forget_ns, args.refill),
+                     lifter=Lifter(info),
                      prepared=OrderedDict(), positions=StampedHistory(args.history), seen=-1)
         state["catchup"] = Catchup(state["tracker"])
 
+    depth_max = [0]  # the deepest catch-up (model steps) since the last report
     seeds = []  # (stamp, object id, (k, 2) pixels of that frame, Waiting or None)
     done = -1  # the stamp of the newest frame looked at
     # the queryable answers in Zenoh's thread from ``view``, which the loop keeps; what it accepts goes to ``inbox``
@@ -362,17 +379,25 @@ def main(argv=None) -> int:
                 if seed[3] is not None:
                     replies.append((seed[3], [], False, []))
         seeds.clear()
+        # one pass for all waiting seeds, from the oldest; --max-catchup drops deeper ones, --catchup-stride thins
+        stamps, dropped, skipped = catchup_plan(list(prepared), [seed[0] for seed in usable], args.catchup_stride,
+                                                args.max_catchup)
+        for seed in usable:
+            if seed[0] in dropped:
+                counts["catchup_dropped"] += 1
+                if seed[3] is not None:
+                    replies.append((seed[3], [], False, []))
+        usable = [seed for seed in usable if seed[0] not in dropped]
+        counts["catchup_skipped"] += skipped
         if not usable:
             return replies
-        first = min(seed[0] for seed in usable)
-        stamps = [s for s in prepared if s >= first]  # in the order they were tracked: by stamp
         index = {s: i for i, s in enumerate(stamps)}
         xy = torch.cat([seed[2] for seed in usable])
         starts = torch.cat([torch.full((len(seed[2]),), index[seed[0]], device=device) for seed in usable])
         began = time.monotonic()
         moved, visible = state["catchup"].run([prepared[s] for s in stamps] + [f], xy, height, width, starts)
         counts["catchup_passes"] += 1
-        counts["catchup_depth_max"] = max(counts["catchup_depth_max"], len(stamps) + 1)
+        depth_max[0] = max(depth_max[0], len(stamps) + 1)  # counts are totals (Reporter.take): the maximum apart
         counts["objects_seeded"] += len(usable)
         inside = (moved[:, 0] >= 0) & (moved[:, 0] <= width - 1) & (moved[:, 1] >= 0) & (moved[:, 1] <= height - 1)
         kept = (visible & inside).cpu().numpy()
@@ -505,22 +530,22 @@ def main(argv=None) -> int:
         counts["new_objects"] += sum(o not in tracks.objects for o in present)
         cols = np.clip(np.round(uv[:, 0]).astype(np.int64), 0, ids.shape[1] - 1)
         rows = np.clip(np.round(uv[:, 1]).astype(np.int64), 0, ids.shape[0] - 1)
-        orphans = tracks.orphans(present, visible, track_id)
-        if len(orphans):  # an object under a new id keeps its tracks (tracks.py)
-            under = ids[torch.as_tensor(rows[orphans], device=device),
-                        torch.as_tensor(cols[orphans], device=device)].cpu().numpy()
-            for o in present:
-                tracks.adopt(orphans[under == o], o)
-            counts["adopted"] += int(np.isin(under, present).sum())
-        inside = np.zeros(len(uv), bool)
-        masks = {}
-        for o in present:
-            masks[o] = ids == o
-            mine = np.nonzero(tracks.object_id == o)[0]
-            if len(mine):
-                grown = grow(masks[o], args.margin)
-                inside[mine] = grown[torch.as_tensor(rows[mine], device=device),
-                                     torch.as_tensor(cols[mine], device=device)].cpu().numpy()
+        # all at the result's own frame: the tracks' positions then (positions), not the newest ones
+        under = ids[torch.as_tensor(rows, device=device), torch.as_tensor(cols, device=device)].cpu().numpy()
+        grown_ids = grow_labels(ids, args.margin)  # each pixel's object id, masks grown by the margin (0: none)
+        under_grown = grown_ids[torch.as_tensor(rows, device=device),
+                                torch.as_tensor(cols, device=device)].cpu().numpy()
+        inside = (under_grown == tracks.object_id) | (under == tracks.object_id)
+        masks = {o: ids == o for o in present}
+        # a track its object does not claim (gone from the result, or outside its mask) and that lies in another
+        # object's mask becomes that object's (tracks.py): no new points beside it
+        unclaimed = tracks.unclaimed(present, visible, inside, track_id)
+        if len(unclaimed):
+            taken = unclaimed[np.isin(under[unclaimed], present) & (under[unclaimed] != tracks.object_id[unclaimed])]
+            for o in np.unique(under[taken]):
+                tracks.adopt(taken[under[taken] == o], int(o))
+            inside[taken] = True
+            counts["adopted"] += len(taken)
         drifted, needs = tracks.check(stamp, present, visible, inside, track_id)
         end(drifted)
         counts["drifted"] += len(drifted)
@@ -535,12 +560,20 @@ def main(argv=None) -> int:
             xy = sample(masks[o], n, have, args.margin)
             if len(xy):
                 seeds.append((stamp, o, xy, None))
+                # why it needs points: its tracks at the result's frame (tracked then), hidden or outside its mask
+                mine = tracks.used & (tracks.object_id == o) & (tracks.track_id == track_id)
+                counts["refill_new"] += not mine.any()
+                counts["refill_hidden"] += int((mine & ~visible).sum())
+                counts["refill_outside"] += int((mine & visible & ~inside).sum())
 
     def apply_parameters():
         """The live parameters' values now, in this thread: the seeding's margin, and the tracks' points per object
         and forgetting (from the next object seeded and the next frame on)."""
         args.margin = params["margin"]
+        args.refill, args.catchup_stride, args.max_catchup = (params["refill"], params["catchup_stride"],
+                                                              params["max_catchup"])
         if state.get("tracks") is not None:
+            state["tracks"].refill = args.refill
             state["tracks"].per_object = params["points_per_object"]
             state["tracks"].forget_ns = round(params["forget"] * 1e9)
         args.points_per_object, args.forget = params["points_per_object"], params["forget"]
@@ -574,7 +607,8 @@ def main(argv=None) -> int:
                     ([f"{d['no_depth_info']} frames without the depth's camera_info"] if d["no_depth_info"] else []) + \
                     ([f"{d['skipped']} frames left out (busy)"] if d["skipped"] else []) + \
                     ([f"{d['no_room']} points without a free track"] if d["no_room"] else []) + \
-                    ([f"{d['seeds_too_old']} seeds of frames no longer kept"] if d["seeds_too_old"] else [])
+                    ([f"{d['seeds_too_old']} seeds of frames no longer kept"] if d["seeds_too_old"] else []) + \
+                    ([f"{d['catchup_dropped']} seeds too deep to catch up"] if d["catchup_dropped"] else [])
                 waiting = None if d["frames"] else "; ".join(
                     f"{keys[k]}: {r.subscriber.describe()}" for k, r in
                     (("color", color), ("depth", depth)) if r is not None)
@@ -586,15 +620,21 @@ def main(argv=None) -> int:
                                 "points without a free track": d["no_room"], "tracks adopted": d["adopted"],
                                 "hidden tracks ended for new points": d["made_room"],
                                 "catch-up frames": d["catchup_frames"], "catch-up passes": d["catchup_passes"],
-                                "catch-up depth max": d["catchup_depth_max"], "new objects": d["new_objects"],
+                                "catch-up depth max": depth_max[0], "new objects": d["new_objects"],
                                 "objects seeded": d["objects_seeded"], "tracks ended": d["freed"],
                                 "results passed over": d["results_passed_over"],
+                                "catch-up dropped": d["catchup_dropped"],
+                                "objects seeded without tracks": d["refill_new"],
+                                "hidden tracks of objects seeded": d["refill_hidden"],
+                                "tracks outside the mask of objects seeded": d["refill_outside"],
+                                "catch-up frames skipped": d["catchup_skipped"],
                                 "catch-up points": d["catchup_points"], "catch-up ms": d["catchup_busy"] * 1e3,
                                 "source": source},
                                log_extra=f", {ms:.0f} ms a frame (catch-up {d['catchup_busy'] * 1e3:.0f} ms of it, "
                                          f"{d['catchup_points']} points over {d['catchup_frames']} frames), "
                                          f"{d['tracks'] / n:.0f} tracks, {d['visible'] / n:.0f} visible, "
                                          f"{d['adopted']} adopted, {d['made_room']} hidden ended for new points")
+                depth_max[0] = 0
     except KeyboardInterrupt:
         pass
     finally:

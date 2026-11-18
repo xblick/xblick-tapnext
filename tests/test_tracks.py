@@ -8,8 +8,8 @@ import torch
 from xblick_tapnext.lifting import Lifter
 from xblick_tapnext.node import FIELDS, POINT_STEP, cloud
 from xblick_tapnext.queries import parse
-from xblick_tapnext.seeding import grow, sample, shrink
-from xblick_tapnext.tracks import DRIFT_RESULTS, Tracks
+from xblick_tapnext.seeding import grow, grow_labels, sample, shrink
+from xblick_tapnext.tracks import DRIFT_RESULTS, Tracks, catchup_plan
 
 S = 1_000_000_000  # a second in ns
 
@@ -159,3 +159,47 @@ def test_the_cloud_has_the_documented_layout():
     assert np.isnan(points["z"][0, 1]) and points["u"][0, 0] == 1.5 and points["visible"].tolist() == [[1, 0]]
     assert cloud(np.zeros((0, 3)), np.zeros((0, 2)), *(np.zeros(0, t) for t in (np.uint32, np.uint16, np.uint8))
                  ).shape == (1, 0)
+
+
+def test_tracks_outside_their_mask_and_inside_another_are_adopted():
+    """SAM 3 reports part of object 7 as object 9: 7's tracks that lie in 9's mask (outside 7's now) become 9's, and 9
+    needs no points; 7's tracks inside 7's mask, hidden ones and those given by hand stay."""
+    t = Tracks(8, per_object=4, forget_ns=6 * S)
+    t.start(np.array([0, 1, 2, 3, 4, 5]), 7, 10 * S)
+    t.start(np.array([6]), 0, 10 * S)
+    seen = np.array([True, True, True, True, True, False, True, False])
+    inside_own = np.array([False, False, True, True, True, False, False, False])  # 0, 1 are in 9's mask now
+    free = t.unclaimed([7, 9], seen, inside_own, t.track_id.copy())
+    assert free.tolist() == [0, 1]
+    t.adopt(free, 9)
+    inside_own[free] = True
+    _, needs = t.check(11 * S, [7, 9], seen, inside_own, t.track_id.copy())
+    assert t.object_id[:6].tolist() == [9, 9, 7, 7, 7, 7] and 9 not in needs and 7 not in needs
+
+
+def test_refill_is_the_share_of_points_below_which_an_object_gets_new_ones():
+    for refill, needs_points in ((0.5, False), (0.9, True)):
+        t = Tracks(8, per_object=4, forget_ns=6 * S, refill=refill)
+        t.start(np.array([0, 1, 2]), 7, 10 * S)  # 3 of 4 visible inside
+        _, needs = t.check(11 * S, [7], np.ones(8, bool), np.ones(8, bool), t.track_id.copy())
+        assert (7 in needs) is needs_points and needs.get(7, 1) == 1
+
+
+def test_grown_labels_keep_each_objects_pixels():
+    ids = torch.zeros(10, 12, dtype=torch.int32)
+    ids[2:5, 2:5], ids[2:5, 6:9] = 3, 8
+    grown = grow_labels(ids, 1)
+    assert (grown[ids != 0] == ids[ids != 0]).all()
+    assert grown[1, 2] == 3 and grown[5, 8] == 8 and grown[3, 5] == 8 and grown[0, 0] == 0  # between: the larger
+
+
+def test_the_catchup_plan_bounds_the_depth_and_thins_the_frames():
+    kept = list(range(10, 20))  # ten kept frames, the newest frame (20) comes after them
+    assert catchup_plan(kept, [15, 17]) == (kept[5:], [], 0)
+    frames, dropped, skipped = catchup_plan(kept, [15, 17], stride=2)
+    assert frames == [15, 16, 17, 18] and skipped == 1  # 18, 16 counted back from the newest (20); 15, 17 the seeds
+    frames, dropped, skipped = catchup_plan(kept, [12, 17], stride=1, max_steps=5)
+    assert dropped == [12] and frames == [17, 18, 19]  # 12 would take 9 steps
+    assert catchup_plan(kept, [12], max_steps=5) == ([], [12], 0)
+    with pytest.raises(ValueError, match="not kept"):
+        catchup_plan(kept, [3])

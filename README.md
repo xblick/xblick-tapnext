@@ -113,7 +113,7 @@ The options that most users change:
 
 All options, the cloud layout and the rules for tracks: [docs/tracks.md](docs/tracks.md).
 
-Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`xblick`, tab Parameters) and `xblick param` show. `points_per_object`, `forget` and `margin` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them. `--download-only` is a mode of the command line and has no parameter.
+Every option is also a parameter of the node `<camera>/tapnext`, which Durchblick's terminal interface (`xblick`, tab Parameters) and `xblick param` show. `points_per_object`, `forget`, `margin`, `refill`, `catchup_stride` and `max_catchup` change while the node runs. The other options apply at the next start, where `--param NAME:=VALUE` or `--params-file FILE` set them. `--download-only` is a mode of the command line and has no parameter.
 
 ## Why it is fast
 

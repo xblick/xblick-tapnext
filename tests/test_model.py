@@ -69,3 +69,16 @@ def test_points_follow_late_ones_as_in_their_own_state_and_slots_are_reused(net)
     both, both_visible = Catchup(tracker).run(prepared, torch.cat([late, later]), H, W,
                                               torch.tensor([0, 0, 5, 5], device="cuda"))
     assert both_visible.all() and (both - torch.cat([xy[4:6], xy[4:6]])).norm(dim=1).max() < 1.5
+
+
+def test_a_catchup_over_every_second_frame_ends_where_the_full_one_does(net):
+    network, resolution = net
+    video = frames(21)
+    tracker = SlotTracker(network, resolution, 16, torch.device("cuda"))
+    prepared = [tracker.prepare(rgb) for rgb in video]
+    late = torch.tensor([[90.0, 100.0], [160.0, 50.0], [200.0, 180.0]], device="cuda")
+    full, full_visible = Catchup(tracker).run(prepared, late, H, W)
+    half, half_visible = Catchup(tracker).run(prepared[::2], late, H, W)  # 0, 2, ..., 20: steps of 2 * STEP
+    expected = late + torch.tensor([STEP * 20, 0.0], device="cuda")
+    assert full_visible.all() and half_visible.all()
+    assert (full - expected).norm(dim=1).max() < 1.5 and (half - expected).norm(dim=1).max() < 1.5

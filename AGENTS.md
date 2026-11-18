@@ -71,9 +71,14 @@ tools/check_references.sh                   # no internal references (patterns i
   frame it is on. New points are followed from their frame to the newest in a state of their own (frames kept by
   `--history`, 60), batched per frame, then enter the tracker as points of the newest frame. Points hidden there
   are dropped. A result whose frame was never tracked (skipped, or older than the kept frames) cannot seed (counted
-  `seeds_too_old`).
-- **SAM 3 re-ids its objects constantly** (about 200 ids for one desk in 30 s of replay). Tracks of objects absent
-  from a result that lie inside a new id's mask are adopted by it (`Tracks.orphans`, `Tracks.adopt`). Without a free
+  `seeds_too_old`). All waiting seeds catch up in one pass (`tracks.catchup_plan`): every `--catchup-stride`-th frame
+  (2) plus each seed's own; seeds deeper than `--max-catchup` steps (30) are dropped and counted. A catch-up step
+  costs about a tracker step (all patches): no exact reuse between the live state and the catch-up beyond the patch
+  embedding (every later layer depends on the token's own recurrent state and on attention to the other tokens).
+- **SAM 3 re-ids its objects** (xblick-sam3 0.2.6: about 200 ids for one desk in 30 s of replay; fewer since
+  0.2.7). Tracks their object does not claim in a result (object absent, or track outside its mask) that lie inside
+  another object's mask at the result's frame are adopted by it (`Tracks.unclaimed`, `Tracks.adopt`). Most seeding
+  is refill (`--refill`, 0.5): the model marks many tracks of an object hidden, not new ids (docs/performance.md). Without a free
   slot, the tracks hidden longest end (`Tracks.hidden_longest`). More than twice `--points-per-object` per object:
   its longest hidden ones end (`Tracks.surplus`).
 - **Stamps only grow.** Symptom: no tracking on a looped replay. Cause: only colour frames (with their depth) newer
@@ -121,6 +126,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | Status | `tapnext` on `<camera>/diagnostics` |
 | `--points-per-object` / `--forget` / `--margin` | 32 / 6 s / 4 px |
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
+| `--refill` / `--catchup-stride` / `--max-catchup` | 0.5 / 2 / 30 steps |
 | `--max-offset-ms` | 20 (fixed) |
 | `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
 | Core | `xblick>=0.5.14,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |

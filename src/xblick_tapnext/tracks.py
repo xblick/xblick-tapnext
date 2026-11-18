@@ -10,13 +10,15 @@ visible. It ends
 * when new points need its slot and no slot is free: the tracks hidden longest first (``hidden_longest``),
 * when the node is told to clear the tracks.
 
-A segmenter may give an object a new id (its own tracker lost it and found it again). A track of an object not in a
-result that the tracker saw inside the mask of an object in it then becomes that object's (``orphans``, ``adopt``):
-the object keeps its points instead of getting new ones beside the old, which would wait ``forget`` seconds to end.
+A segmenter may give an object a new id (its own tracker lost it and found it again), or report part of an object as
+an object of its own. A track that its object no longer claims (``unclaimed``: the object is not in the result, or the
+track lies outside its object's mask) and that the tracker saw inside the mask of another object in the result then
+becomes that object's (``adopt``): the object keeps the points that are on it instead of getting new ones beside the
+old, which would wait ``forget`` seconds to end (or end as drifted).
 
-An object gets new points when fewer than half of ``per_object`` of its tracks are visible inside its mask: as many as
-make ``per_object`` visible ones again. Its tracks then may be more than ``per_object`` (hidden ones wait to be seen
-again); at more than twice ``per_object`` its longest hidden ones end.
+An object gets new points when fewer than ``refill`` times ``per_object`` of its tracks are visible inside its mask
+(adopted ones count): as many as make ``per_object`` visible ones again. Its tracks then may be more than
+``per_object`` (hidden ones wait to be seen again); at more than twice ``per_object`` its longest hidden ones end.
 """
 
 from __future__ import annotations
@@ -27,9 +29,10 @@ DRIFT_RESULTS = 2  # results in a row a visible track lies outside its object's 
 
 
 class Tracks:
-    def __init__(self, slots: int, per_object: int, forget_ns: int):
+    def __init__(self, slots: int, per_object: int, forget_ns: int, refill: float = 0.5):
         self.slots = slots
         self.per_object = per_object
+        self.refill = refill
         self.forget_ns = forget_ns
         self.track_id = np.zeros(slots, np.uint32)  # 0: free
         self.object_id = np.zeros(slots, np.uint16)
@@ -78,6 +81,14 @@ class Tracks:
         same = self.used & (self.track_id == track_id)
         return np.nonzero(same & visible & (self.object_id != 0) & ~np.isin(self.object_id, present))[0]
 
+    def unclaimed(self, present: list[int], visible: np.ndarray, inside: np.ndarray,
+                  track_id: np.ndarray) -> np.ndarray:
+        """Slots of tracks the tracker saw in a result's frame that their object does not claim in that result: the
+        orphans, and tracks of objects in it that lie outside their object's mask (``inside`` False); not those given
+        by hand."""
+        same = self.used & (self.track_id == track_id) & visible & (self.object_id != 0)
+        return np.nonzero(same & (~np.isin(self.object_id, present) | ~inside))[0]
+
     def adopt(self, slots: np.ndarray, object_id: int):
         """Tracks in ``slots`` become ``object_id``'s (orphans inside its mask)."""
         self.object_id[slots] = object_id
@@ -100,7 +111,7 @@ class Tracks:
         needs = {}
         for o in present:
             have = int((good & (self.object_id == o)).sum())
-            if have < self.per_object / 2:
+            if have < self.refill * self.per_object:
                 needs[o] = self.per_object - have
         return drifted, needs
 
@@ -117,3 +128,22 @@ class Tracks:
         if over <= 0:
             return mine[:0]
         return mine[np.argsort(self.last_visible[mine], kind="stable")[:over]]
+
+
+def catchup_plan(kept: list[int], seeds: list[int], stride: int = 1, max_steps: int = 0):
+    """The frames a catch-up runs over: ``kept`` the stamps of the kept frames (oldest first), ``seeds`` the stamps of
+    the waiting seeds' frames. A seed whose catch-up would take more than ``max_steps`` model steps (its frame and the
+    kept ones after it, and the newest frame, which is not in ``kept``) is dropped; 0: no bound. Of the frames from the
+    oldest remaining seed on, every ``stride``-th counted back from the newest stays, and each seed's own.
+    Returns (frames, the seeds' stamps dropped, the frames left out by the stride)."""
+    position = {s: i for i, s in enumerate(kept)}
+    missing = [s for s in seeds if s not in position]
+    if missing:
+        raise ValueError(f"seeds of frames not kept: {missing}")
+    dropped = sorted({s for s in seeds if max_steps and len(kept) - position[s] + 1 > max_steps})
+    left = {s for s in seeds if s not in dropped}
+    if not left:
+        return [], dropped, 0
+    frames = kept[min(position[s] for s in left):]
+    every = [s for i, s in enumerate(frames) if (len(frames) - i) % stride == 0 or s in left]
+    return every, dropped, len(frames) - len(every)
