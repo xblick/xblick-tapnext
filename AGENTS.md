@@ -123,5 +123,5 @@ tools/check_references.sh                   # no internal references (patterns i
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
 | `--max-offset-ms` | 20 (fixed) |
 | `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
-| Core | `xblick>=0.5.5,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
+| Core | `xblick>=0.5.14,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
 | Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected), `XBLICK_HOME`, `XDG_CACHE_HOME` (cache directory) |
