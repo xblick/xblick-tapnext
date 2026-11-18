@@ -104,7 +104,6 @@ Points given by hand through the queryable got track ids, and the node followed 
 
 ## Status and limits
 
-- We have not measured the speed on the GPUs of a robot.
 - The end-to-end numbers are without `--compile`.
 - We measured accuracy only at 640 x 480.
 

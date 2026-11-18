@@ -150,6 +150,4 @@ tapnet package, and it copies nothing from tapnet.
 
 ## Status and limits
 
-- Version 0.1.0, status of 2026-11-02. We tested the node on TUM RGB-D with ground truth and end to end with
-  xblick-sam3 on a replayed RGB-D sequence. We have not tested it on a robot.
 - The node needs a Durchblick version that supports empty point clouds. Durchblick 0.3.25 added them.
