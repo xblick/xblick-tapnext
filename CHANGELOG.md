@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.6 (2026-11-18)
+
+A cheaper catch-up of late masks, and the work it does in the status.
+
+### Added
+
+- `--catchup-stride` (default 2): late points catch up over every second kept frame and the frame of each result.
+  A quarter fewer model steps, no loss of accuracy on TUM (docs/performance.md). `1` restores every frame.
+- `--max-catchup` (default 30 model steps): a result of an older frame seeds nothing and is counted.
+- `--refill` (default 0.5, as before): the share of `--points-per-object` below which an object gets new points.
+- Status: catch-up passes, their model steps and the deepest one, frames left out by the stride, results dropped,
+  new objects, objects seeded and why (hidden tracks, tracks outside the mask, no tracks), tracks ended, results
+  passed over.
+
+### Changed
+
+- An object adopts every track that its object does not claim and that lies in its mask at the result's frame:
+  also tracks outside the mask of their own object, not only tracks of objects absent from the result.
+
+Nothing on the wire changed.
+
 ## 0.2.5 (2026-11-18)
 
 The Durchblick core 0.5.14.
