@@ -248,6 +248,7 @@ def main(argv=None) -> int:
         if len(slots):
             state["tracker"].free(torch.as_tensor(slots, device=device))
             state["tracks"].end(slots)
+            counts["freed"] += len(slots)
 
     key = f"{camera}/{args.node}/{QUERIES}"
 
@@ -370,6 +371,9 @@ def main(argv=None) -> int:
         starts = torch.cat([torch.full((len(seed[2]),), index[seed[0]], device=device) for seed in usable])
         began = time.monotonic()
         moved, visible = state["catchup"].run([prepared[s] for s in stamps] + [f], xy, height, width, starts)
+        counts["catchup_passes"] += 1
+        counts["catchup_depth_max"] = max(counts["catchup_depth_max"], len(stamps) + 1)
+        counts["objects_seeded"] += len(usable)
         inside = (moved[:, 0] >= 0) & (moved[:, 0] <= width - 1) & (moved[:, 1] >= 0) & (moved[:, 1] <= height - 1)
         kept = (visible & inside).cpu().numpy()
         counts["catchup_busy"] += time.monotonic() - began
@@ -398,7 +402,7 @@ def main(argv=None) -> int:
             if query is not None:
                 it = iter(started.tolist())
                 replies.append((query, [next(it) if k else None for k in keep], True, slots))
-        counts["catchup_frames"] += len(stamps)
+        counts["catchup_frames"] += len(stamps) + 1  # the model's steps: the kept frames since the oldest, and this one
         return replies
 
     def track(stamp, skipped):
@@ -485,6 +489,7 @@ def main(argv=None) -> int:
         if not new:
             return
         stamp = max(new)
+        counts["results_passed_over"] += len(new) - 1  # a newer result came before these were looked at
         state["seen"] = stamp
         message = detections_history.at(stamp)
         ids_frame = instances.at(stamp)
@@ -497,6 +502,7 @@ def main(argv=None) -> int:
         uv, visible, track_id = positions.at(stamp)
         tracks = state["tracks"]
         present = [int(d.id) for d in message.detections]
+        counts["new_objects"] += sum(o not in tracks.objects for o in present)
         cols = np.clip(np.round(uv[:, 0]).astype(np.int64), 0, ids.shape[1] - 1)
         rows = np.clip(np.round(uv[:, 1]).astype(np.int64), 0, ids.shape[0] - 1)
         orphans = tracks.orphans(present, visible, track_id)
@@ -579,7 +585,10 @@ def main(argv=None) -> int:
                                 "segmenter results": d["results"], "frames left out": d["skipped"],
                                 "points without a free track": d["no_room"], "tracks adopted": d["adopted"],
                                 "hidden tracks ended for new points": d["made_room"],
-                                "catch-up frames": d["catchup_frames"],
+                                "catch-up frames": d["catchup_frames"], "catch-up passes": d["catchup_passes"],
+                                "catch-up depth max": d["catchup_depth_max"], "new objects": d["new_objects"],
+                                "objects seeded": d["objects_seeded"], "tracks ended": d["freed"],
+                                "results passed over": d["results_passed_over"],
                                 "catch-up points": d["catchup_points"], "catch-up ms": d["catchup_busy"] * 1e3,
                                 "source": source},
                                log_extra=f", {ms:.0f} ms a frame (catch-up {d['catchup_busy'] * 1e3:.0f} ms of it, "
