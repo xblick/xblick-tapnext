@@ -200,3 +200,20 @@ class Catchup:
         for frame in frames:
             tracks, visible, state = self.net.forward(frame, queries, state)
         return to_pixels(tracks, height, width), visible
+
+
+def warm_up(net, resolution: int, slots: int, device: torch.device, decoys: bool) -> None:
+    """Runs the network through the shapes a node gives it, so that a compiled network (``torch.compile``) compiles
+    now and not on the first frames: the tracker's step (its first frame and later ones) and catch-ups of a few
+    different point counts (the first two compile the static and the dynamic graph)."""
+    tracker = SlotTracker(net, resolution, slots, device, decoys=decoys)
+    frame = torch.zeros(1, 1, resolution, resolution, 3, device=device)
+    xy = torch.tensor([[10.0, 10.0], [50.0, 40.0]], device=device)
+    tracker.step(frame)
+    tracker.add(torch.tensor([0, 1], device=device), xy, MODEL, MODEL)
+    for _ in range(2):
+        tracker.step(frame)
+    catchup = Catchup(tracker)
+    for n in (5, 17, 40):
+        catchup.run([frame, frame], torch.rand(n, 2, device=device) * (MODEL - 1), MODEL, MODEL)
+    torch.cuda.synchronize(device)

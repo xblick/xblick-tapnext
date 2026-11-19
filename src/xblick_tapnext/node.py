@@ -63,6 +63,7 @@ FIELDS = [PointField("x", 0, PointField.FLOAT32), PointField("y", 4, PointField.
           PointField("object_id", 24, PointField.UINT16), PointField("visible", 26, PointField.UINT8)]
 QUERY_WAIT_S = 2.0  # a points query is answered within this: its track ids, or an error and no tracks
 FREE_SLOTS = ("decoys", "future")  # --free-slots
+COMPILE = "default"  # --compile: torch.compile's mode, or none
 CATCHUP_STRIDE = 2  # --catchup-stride: on TUM no worse than 1 (docs/performance.md), a quarter fewer steps
 MAX_CATCHUP = 30  # --max-catchup: one second at 30 Hz
 MAX_OFFSET_MS = 20.0  # --max-offset-ms: one capture's colour and depth (an Azure Kinect: up to 17 ms apart), not two
@@ -123,9 +124,9 @@ def main(argv=None) -> int:
     parser.add_argument("--checkpoint", default="256",
                         help="TAPNext++'s: 256 or 512 (the input resolution it was fine-tuned at; in the cache "
                              "directory, downloaded at the first start; README, \"Speed\") or a .pt file of a 256 one")
-    parser.add_argument("--compile", default=None, metavar="MODE",
-                        help="torch.compile the network in this mode (e.g. default: about twice as fast; compiles "
-                             "at the first frames, about a minute)")
+    parser.add_argument("--compile", default=COMPILE, metavar="MODE",
+                        help="torch.compile the network in this mode before the first frame (default: %(default)s, "
+                             "about twice as fast; the start takes one to two minutes longer), or none: not compiled")
     parser.add_argument("--free-slots", choices=FREE_SLOTS, default="decoys",
                         help="what a free slot of the tracker holds: decoys (a real query at a point of the image; "
                              "many free slots then do not degrade the tracks, docs/design.md) or future (a query that "
@@ -190,7 +191,7 @@ def main(argv=None) -> int:
     import torch  # noqa: PLC0415 - with the model, after the arguments are checked
 
     from .lifting import Lifter  # noqa: PLC0415
-    from .model import Catchup, SlotTracker, load, to_pixels  # noqa: PLC0415
+    from .model import Catchup, SlotTracker, load, to_pixels, warm_up  # noqa: PLC0415
     from .seeding import grow_labels, sample  # noqa: PLC0415
     from .tracks import Tracks, catchup_plan  # noqa: PLC0415
 
@@ -203,8 +204,21 @@ def main(argv=None) -> int:
         return 1
     torch.cuda.set_device(device)
     net, resolution = load(args.checkpoint, device, store.root)
-    if args.compile is not None:
-        net = torch.compile(net, mode=args.compile)
+    if args.compile != "none":
+        # compiled now, before any stream is read: frames that come meanwhile are not taken (no subscriber yet)
+        print(f"xblick-tapnext: compiling the network (--compile {args.compile}; one to two minutes, --compile none "
+              "starts at once)", flush=True)
+        began = time.monotonic()
+        try:
+            net = torch.compile(net, mode=args.compile)
+            warm_up(net, resolution, args.max_tracks, device, args.free_slots == "decoys")
+        except Exception as error:  # noqa: BLE001 - one line and the end, never an uncompiled network instead
+            print(f"xblick-tapnext: --compile {args.compile} failed: {type(error).__name__}: {error}".splitlines()[0],
+                  file=sys.stderr, flush=True)
+            params.close()
+            session.close()
+            return 1
+        print(f"xblick-tapnext: compiled in {time.monotonic() - began:.0f} s", flush=True)
     forget_ns = round(args.forget * 1e9)
 
     wake = threading.Event()

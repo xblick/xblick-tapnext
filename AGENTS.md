@@ -18,7 +18,7 @@ tools/setup.sh                              # submodule, uv sync --frozen, --dow
 .venv/bin/python -m pytest -q tests/test_tracks.py   # CPU: track rules, seeding, lifting, queries, cloud layout
 .venv/bin/ruff check src tests              # lint; 120 columns and rules in pyproject.toml, third_party excluded
 tools/check_references.sh                   # no internal references (patterns in the script; also in CI)
-.venv/bin/xblick-tapnext --camera cam/azurekinect:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext --camera cam/azurekinect:depth=depth_to_color   # compiles first (--compile none: not)
 .venv/bin/xblick-tapnext-queries --camera cam/azurekinect [--json '{...}']   # read or change the state
 ```
 
@@ -27,7 +27,8 @@ tools/check_references.sh                   # no internal references (patterns i
 - `--no-download`: a start with a missing checkpoint ends with one line (exit 1). Excludes `--download-only`.
 - Standalone order: `zenohd` on the PC, xblick-sam3 on the camera, then the node. `xblick rerun` shows the
   tracks in 3D and over the image.
-- `--compile default`: about a minute of compiling at the first frames.
+- `--compile default` (the default): one to two minutes of compiling at the start (`model.warm_up`), before any stream
+  is read; a failed compilation ends the node with one line. Tests pass `--compile none` unless they test compiling.
 - Without a camera: `xblick play <recording.mcap> --loop` of an RGB-D recording, or a simulation.
 - Depends on xblick-sam3: default segmenter is the `sam3` instance on the same camera (`CAMERA:segmenter=NAME`
   changes it, `--no-segmenter` for points by hand only). The rc_visard also needs xblick-fast-foundationstereo's
@@ -89,8 +90,9 @@ tools/check_references.sh                   # no internal references (patterns i
   resets all tracks.
 - **Depth** in the colour camera's geometry, any size, 16UC1 mm or 32FC1 m (Azure Kinect: `depth_to_color`;
   rc_visard: `color=left:depth=ffs/depth`). `--no-depth`: 2D only. Lifting undistorts with OpenCV (`lifting.py`).
-- **`--compile default`** halves the time per frame (256: 10.7 -> 5.6 ms) but takes about a minute at the first
-  frames. Default checkpoint 256. 512 gained nothing at 640 x 480. float16 autocast.
+- **`--compile default`** (the default since 0.2.6) halves the time per frame (256: 10.7 -> 5.6 ms) but takes one to
+  two minutes at the start. The warm-up runs the shapes the node uses (live steps, catch-ups of several point counts;
+  `state.step` and the point count become dynamic): no recompilation on the first frames. Default checkpoint 256. 512 gained nothing at 640 x 480. float16 autocast.
 - **`--download-only` and `--camera`.** `--camera` is required for a start only. `xblick.weights.parse_args` lifts
   `required` when the token `--download-only` is spelled out (an abbreviation is not seen).
 - **`download_only` as a parameter.** `declare_options` would declare it: it is in `leave_out`. `no_download` is a
@@ -130,6 +132,6 @@ tools/check_references.sh                   # no internal references (patterns i
 | `--max-tracks` / `--history` / `--checkpoint` | 1024 / 60 / `256` |
 | `--refill` / `--catchup-stride` / `--max-catchup` | 0.5 / 2 / 30 steps |
 | `--max-offset-ms` | 20 (fixed) |
-| `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / off |
+| `--max-hz` / `--local` / `--device` / `--compile` | every frame / `auto` / `cuda` / `default` (`none`: off) |
 | Core | `xblick>=0.5.14,<0.6` (pyproject; the core's Python package, `durchblick` up to 0.3 and `blick` in 0.4) |
 | Environment | `UV` (setup), `CUDA_MPS_PIPE_DIRECTORY` (MPS expected), `XBLICK_HOME`, `XDG_CACHE_HOME` (cache directory) |

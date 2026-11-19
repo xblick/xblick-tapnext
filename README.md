@@ -83,7 +83,8 @@ Details: [docs/tracks.md](docs/tracks.md).
    xblick rerun                                                # the viewer
    ```
 
-   When the node prints its frames per second, give it points to follow, in pixels of the video:
+   The node first compiles its network for one to two minutes (`compiled in ... s`). When it prints its frames per
+   second, give it points to follow, in pixels of the video:
 
    ```bash
    .venv/bin/xblick-tapnext-queries --camera demo/video --json '{"points": [[320, 240], [400, 300]]}'
@@ -127,11 +128,11 @@ Start xblick-sam3 on the camera first. Then start the node. The camera names are
 to the Zenoh router of the PC, which [Sessions](https://github.com/xblick/xblick/blob/main/docs/concepts/sessions.md) explains.
 
 ```bash
-.venv/bin/xblick-tapnext --camera cam/azurekinect:depth=depth_to_color --compile default
+.venv/bin/xblick-tapnext --camera cam/azurekinect:depth=depth_to_color
 ```
 
-`--compile default` compiles the network during the first frames, which takes about a minute. After that a frame
-takes about half the time.
+The node compiles the network at its start, which takes one to two minutes. After that a frame takes about half the
+time. `--compile none` starts at once and runs slower.
 
 `xblick rerun` shows the tracks without options. It draws the lifted points in 3D and the visible points over
 the colour image, with one colour per object.
@@ -154,7 +155,7 @@ The options that most users change:
 | `--max-tracks` | 1024 | The highest number of tracks. |
 | `--forget` | 6 | The seconds for which a track may be hidden before it ends. Live: it changes while the node runs. |
 | `--checkpoint` | `256` | The TAPNext++ checkpoint: `256` or `512`. |
-| `--compile MODE` | off | Compile the network with `torch.compile`, for example `default`. |
+| `--compile MODE` | `default` | Compile the network with `torch.compile` at the start (one to two minutes). `none` does not compile. |
 | `--no-download` | off | End at once when the checkpoint is missing. The node downloads nothing. |
 | `--download-only` | off | Download the missing checkpoint, check it and end. `--camera` may be left out. |
 | `--weights-dir DIR` | the cache directory | where the weights are and go, in place of `~/.cache/xblick/tapnext/` |
@@ -165,7 +166,7 @@ Every option is also a parameter of the node `<camera>/tapnext`, which Durchblic
 
 ## Why it is fast
 
-A frame takes 5.6 ms with `--compile default` and 10.7 ms without, for 512 tracks on an RTX PRO 6000.
+A frame takes 5.6 ms compiled (the default) and 10.7 ms with `--compile none`, for 512 tracks on an RTX PRO 6000.
 
 | Change | Effect |
 | --- | --- |

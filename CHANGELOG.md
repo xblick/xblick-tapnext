@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.2.6 (2026-11-18)
+## 0.2.6 (2026-11-19)
 
-A cheaper catch-up of late masks, and the work it does in the status.
+Compiled by default, free slots that no longer degrade the tracks, a cheaper catch-up of late masks, and its work in
+the status.
 
 ### Added
 
@@ -10,7 +11,8 @@ A cheaper catch-up of late masks, and the work it does in the status.
   future. Many such queries degraded the real tracks: the model marked many points hidden while they were in view
   (docs/design.md), which drove most of the seeding and so most of the catch-up.
 - `--catchup-stride` (default 2): late points catch up over every second kept frame and the frame of each result.
-  A quarter fewer model steps, no loss of accuracy on TUM (docs/performance.md). `1` restores every frame.
+  A quarter fewer model steps; the caught-up points are at most a fifth of a pixel further off (docs/performance.md).
+  `1` restores every frame.
 - `--max-catchup` (default 30 model steps): a result of an older frame seeds nothing and is counted.
 - `--refill` (default 0.5, as before): the share of `--points-per-object` below which an object gets new points.
 - Status: catch-up passes, their model steps and the deepest one, frames left out by the stride, results dropped,
@@ -19,6 +21,12 @@ A cheaper catch-up of late masks, and the work it does in the status.
 
 ### Changed
 
+- `--compile` is `default` (was off): the node compiles its network at its start, before it reads a stream, which takes
+  one to two minutes, and says so; then a frame takes about half the time. `--compile none` does not compile. A failed
+  compilation ends the node with one line.
+- `tools/setup.sh`: `--help`; an unknown option is refused; it stops with the command to run when it is not on Linux
+  x86-64, git or uv is missing or the directory is not a git clone; it says when no NVIDIA GPU with driver 580 or newer
+  is found and goes on; it lists what it downloads, with sizes and licences, first. What it installs is unchanged.
 - An object adopts every track that its object does not claim and that lies in its mask at the result's frame:
   also tracks outside the mask of their own object, not only tracks of objects absent from the result.
 

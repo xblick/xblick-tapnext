@@ -49,7 +49,7 @@ def test_queries_are_answered_at_once_while_the_model_works():
             time.sleep(0.1)
 
     command = [sys.executable, os.path.join(os.path.dirname(__file__), "slow_step.py"), "4.0", "--camera", CAM,
-               "--no-depth", "--no-segmenter", "--connect", f"127.0.0.1:{port}"]
+               "--no-depth", "--no-segmenter", "--compile", "none", "--connect", f"127.0.0.1:{port}"]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     output: list[str] = []
     threading.Thread(target=lambda: output.extend(process.stdout), daemon=True).start()
@@ -89,3 +89,20 @@ def test_queries_are_answered_at_once_while_the_model_works():
         color.close()
         session.close()
     assert process.returncode == 0, "".join(output)
+
+
+def test_the_node_compiles_by_default_and_a_failed_compilation_ends_it():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    session = open_session(listen=[f"127.0.0.1:{port}"])
+    try:
+        command = [sys.executable, os.path.join(os.path.dirname(__file__), "failing_compile.py"), "--camera", CAM,
+                   "--no-depth", "--no-segmenter", "--connect", f"127.0.0.1:{port}"]
+        done = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    finally:
+        session.close()
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "compiling the network (--compile default; one to two minutes" in done.stdout, done.stdout
+    assert done.stderr.strip().splitlines()[-1] == \
+        "xblick-tapnext: --compile default failed: RuntimeError: no compiler here", done.stderr

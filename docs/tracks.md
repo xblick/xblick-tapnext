@@ -189,7 +189,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--max-catchup` | 30 | The most model steps of a catch-up. A result of an older frame seeds nothing and is counted. `0`: no bound. Live: it changes while the node runs. |
 | `--margin` | 4 | The pixels that a new point keeps from the edge of its mask. A track may also be this far outside its mask. Live: it changes while the node runs. |
 | `--checkpoint` | `256` | `256` or `512`, the input resolution at which DeepMind fine-tuned the checkpoint. You can also give a `.pt` file of a 256 checkpoint. |
-| `--compile MODE` | off | Compile the network with `torch.compile` in this mode during the first frames. |
+| `--compile MODE` | `default` | Compile the network with `torch.compile` in this mode at the start, before the node reads a stream: one to two minutes. `none` does not compile. A failed compilation ends the node with one line. |
 | `--history` | 60 | The number of frames that the node keeps. Results of the segmenter and queries refer to them by stamp. |
 | `--device` | `cuda` | The GPU of the node: `cuda` is GPU 0, `cuda:N` is GPU N. A GPU that cannot be used ends the node with one line. |
 | `--no-download` | off | End at once when the checkpoint is missing, and name it. The node downloads nothing. |

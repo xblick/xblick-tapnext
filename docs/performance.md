@@ -5,6 +5,10 @@ This page states how fast and how accurate xblick-tapnext is, and how we measure
 
 ## Speed
 
+DeepMind state 5.05 to 5.33 ms per frame for TAPNext with 256 to 1024 points on an H100, per frame and online, with
+`torch.compile` ("crucial for fast inference", TAPNext paper, Table 2), at 256 x 256; 5.18 to 5.23 ms for TAPNext++.
+Their figures are for the compiled model. The node's compiled step is in the same range:
+
 | Checkpoint | Eager | `--compile default` | VRAM |
 | --- | --- | --- | --- |
 | 256 | 10.7 ms | 5.6 ms | about 1.7 GB |
@@ -15,8 +19,8 @@ Setup: an RTX PRO 6000, 512 slots, float16 autocast, time per frame, measured on
 Three terms need an explanation.
 
 - *Eager* is PyTorch's normal mode. Python executes the model operation by operation.
-- *`torch.compile`* translates a PyTorch model into optimised code. The node compiles during the first frames,
-  which takes about a minute.
+- *`torch.compile`* translates a PyTorch model into optimised code. The node compiles at its start, before it reads
+  a stream, which takes one to two minutes (`--compile default`, the default; `--compile none` does not compile).
 - *Autocast* is PyTorch's mechanism that converts values to a 16-bit float format on the fly. A GPU computes
   16-bit floats faster than 32-bit floats.
 
@@ -56,6 +60,10 @@ frames and compared them with their true positions (the true poses and depth):
 
 The numbers are median errors. The camera turns at up to 67 deg/s in this sequence (90 % of the frames: up to
 38 deg/s).
+
+In a simulation of ARMAR-6's head sweeping over a table at up to 2.5 deg per frame (75 deg/s at 30 Hz), with objects
+standing and on a turntable and their true poses as truth, stride 2 put the caught-up points at most 0.17 px further
+off in the median and 0.3 px at the 90th percentile than stride 1, over 3 to 8 frames. Stride 3 was further off.
 
 ## Accuracy against ground truth
 
