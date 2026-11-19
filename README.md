@@ -66,10 +66,10 @@ Details: [docs/tracks.md](docs/tracks.md).
    tools/setup.sh
    ```
 
-4. Install the core's command `xblick` with the viewer and video files. uv puts it on `PATH`.
+4. Install the core's command `xblick` with the viewer, video files and webcams. uv puts it on `PATH`.
 
    ```bash
-   uv tool install "xblick[rerun,video]>=0.5,<0.6"
+   uv tool install "xblick[rerun,video,cam]>=0.5,<0.6"
    ```
 
 5. Start the node on a video, without a camera. Any short video works, for example one from a phone. Run each
@@ -90,7 +90,7 @@ Details: [docs/tracks.md](docs/tracks.md).
    ```
 
    The viewer shows the video with a coloured dot on each point. The dots move with the surface they lie on. A
-   point that the tracker loses, for example on a plain wall, ends after 6 seconds. Send new points at any time.
+   point that the tracker loses, because it leaves the image or is hidden, ends after 6 seconds. Send new points at any time.
    `--no-depth` tracks in 2D, and `--no-segmenter` follows only the points that you give. [Run](#run) uses a camera
    with depth and xblick-sam3.
 
