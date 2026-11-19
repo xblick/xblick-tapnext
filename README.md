@@ -152,7 +152,7 @@ The options that most users change:
 | `--no-depth` | off | Track in 2D only. `x, y, z` are then NaN. |
 | `--no-segmenter` | off | Follow only the points that you give by hand. |
 | `--points-per-object` | 32 | The number of points with which the node follows an object. Live: it changes while the node runs. |
-| `--max-tracks` | 1024 | The highest number of tracks. |
+| `--max-tracks` | 1024 | The highest number of tracks. Fewer are faster ([performance](docs/performance.md)). |
 | `--forget` | 6 | The seconds for which a track may be hidden before it ends. Live: it changes while the node runs. |
 | `--checkpoint` | `256` | The TAPNext++ checkpoint: `256` or `512`. |
 | `--compile MODE` | `default` | Compile the network with `torch.compile` at the start (one to two minutes). `none` does not compile. |

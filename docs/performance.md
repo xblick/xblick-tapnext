@@ -16,6 +16,17 @@ Their figures are for the compiled model. The node's compiled step is in the sam
 
 Setup: an RTX PRO 6000, 512 slots, float16 autocast, time per frame, measured on 2026-11-02.
 
+The number of slots (`--max-tracks`) changes the time of a step. The default of 1024 slots holds 32 objects at 32
+points each. A scene with few objects is faster with fewer slots:
+
+| `--max-tracks` | Eager | `--compile default` | Objects at 32 points each |
+| --- | --- | --- | --- |
+| 256 | 10.5 ms | 5.7 ms | 8 |
+| 1024 (default) | 12.2 ms | 7.7 ms | 32 |
+
+Setup: an RTX PRO 6000 that ran nothing else, 256 checkpoint, float16 autocast, the model step alone, median of 200
+frames, measured on 2026-11-19. When all slots are in use, the tracks that are hidden longest end.
+
 Three terms need an explanation.
 
 - *Eager* is PyTorch's normal mode. Python executes the model operation by operation.
