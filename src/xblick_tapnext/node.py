@@ -62,6 +62,7 @@ FIELDS = [PointField("x", 0, PointField.FLOAT32), PointField("y", 4, PointField.
           PointField("v", 16, PointField.FLOAT32), PointField("track_id", 20, PointField.UINT32),
           PointField("object_id", 24, PointField.UINT16), PointField("visible", 26, PointField.UINT8)]
 QUERY_WAIT_S = 2.0  # a points query is answered within this: its track ids, or an error and no tracks
+FREE_SLOTS = ("decoys", "future")  # --free-slots
 CATCHUP_STRIDE = 2  # --catchup-stride: on TUM no worse than 1 (docs/performance.md), a quarter fewer steps
 MAX_CATCHUP = 30  # --max-catchup: one second at 30 Hz
 MAX_OFFSET_MS = 20.0  # --max-offset-ms: one capture's colour and depth (an Azure Kinect: up to 17 ms apart), not two
@@ -125,6 +126,10 @@ def main(argv=None) -> int:
     parser.add_argument("--compile", default=None, metavar="MODE",
                         help="torch.compile the network in this mode (e.g. default: about twice as fast; compiles "
                              "at the first frames, about a minute)")
+    parser.add_argument("--free-slots", choices=FREE_SLOTS, default="decoys",
+                        help="what a free slot of the tracker holds: decoys (a real query at a point of the image; "
+                             "many free slots then do not degrade the tracks, docs/design.md) or future (a query that "
+                             "has not come yet, as before 0.2.6)")
     parser.add_argument("--refill", type=float, default=0.5,
                         help="an object gets new points when fewer than this share of --points-per-object of its "
                              "tracks are visible in its mask (tracks it adopted count)")
@@ -235,8 +240,8 @@ def main(argv=None) -> int:
 
     def reset(info, frame_id):
         state.clear()
-        state.update(key=(info.width, info.height, frame_id), tracker=SlotTracker(net, resolution, args.max_tracks,
-                                                                                  device),
+        tracker = SlotTracker(net, resolution, args.max_tracks, device, decoys=args.free_slots == "decoys")
+        state.update(key=(info.width, info.height, frame_id), tracker=tracker,
                      tracks=Tracks(args.max_tracks, args.points_per_object, forget_ns, args.refill),
                      lifter=Lifter(info),
                      prepared=OrderedDict(), positions=StampedHistory(args.history), seen=-1)

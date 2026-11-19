@@ -98,10 +98,26 @@ def to_pixels(yx: torch.Tensor, height: int, width: int) -> torch.Tensor:
     return yx.flip(-1) * scale - 0.5
 
 
-class SlotTracker:
-    """One state of ``slots`` query tokens over a camera's frames (module docstring); the last slot is never used."""
+DECOY_REFRESH = 30  # frames between re-placings of the decoys the model does not see
 
-    def __init__(self, net, resolution: int, slots: int, device: torch.device):
+
+def decoy_points(n: int, offset: int = 0) -> torch.Tensor:
+    """``n`` points spread over the model's image (an R2 low-discrepancy sequence from ``offset``), model [y, x]."""
+    i = torch.arange(offset, offset + n, dtype=torch.float64) + 1
+    g = 1.32471795724474602596  # the plastic number
+    return (torch.stack([(0.5 + i / (g * g)) % 1, (0.5 + i / g) % 1], 1) * (MODEL - 2) + 1).float()
+
+
+class SlotTracker:
+    """One state of ``slots`` query tokens over a camera's frames (module docstring); the last slot is never used.
+
+    ``decoys``: a free slot follows a decoy point (a real query at a point of the image) instead of being a query of
+    the future. Hundreds of identical future queries degrade the real tracks: on TUM RGB-D the model then marked 7-35 %
+    of truly visible points hidden and lost more of them, against 2-5 % with the same points alone or among real
+    queries (docs/design.md). A decoy that the model does not see is placed anew every ``DECOY_REFRESH`` frames. The
+    decoys' positions are never reported as tracks."""
+
+    def __init__(self, net, resolution: int, slots: int, device: torch.device, decoys: bool = False):
         self.net = _Net(net, resolution, device)
         self.slots = slots
         self.device = device
@@ -109,37 +125,60 @@ class SlotTracker:
         self.frames = 0  # frames given so far: the next frame's time
         self.queries = torch.zeros(1, slots + 1, 3, device=device)  # [t, y, x]; free slots: always the next frame + 1
         self.used = torch.zeros(slots + 1, dtype=torch.bool, device=device)
+        self.decoys = decoys
+        self.decoy = torch.zeros(slots + 1, dtype=torch.bool, device=device)  # free slots that follow a decoy point
+        self._placed = 0  # decoy points placed so far (the sequence goes on)
         self._patches = None
+        if decoys:
+            self._place(torch.arange(slots, device=device))
 
     def prepare(self, rgb: torch.Tensor) -> torch.Tensor:
         return self.net.prepare(rgb)
+
+    def _reset(self, slots: torch.Tensor):
+        """The slots' states become the never-used slot's (a query that has not come yet)."""
+        if self.state is not None and len(slots):
+            for cache in self.state.hidden_state:
+                for s in (cache.rg_lru_state, cache.conv1d_state):
+                    s[self._patches + slots] = s[self._patches + self.slots].clone()
+
+    def _place(self, slots: torch.Tensor):
+        """Free ``slots`` follow new decoy points, queried at the next frame."""
+        self._reset(slots)
+        self.queries[0, slots, 0] = self.frames
+        self.queries[0, slots, 1:] = decoy_points(len(slots), self._placed).to(self.device)
+        self._placed += len(slots)
+        self.decoy[slots] = True
 
     def add(self, slots: torch.Tensor, xy: torch.Tensor, height: int, width: int):
         """Free ``slots`` (long) become queries of the next frame at ``xy`` (pixels of the next frame)."""
         if bool(self.used[slots].any()) or bool((slots >= self.slots).any()):
             raise ValueError(f"slots {slots.tolist()}: not all free")
+        self._reset(slots[self.decoy[slots]])
+        self.decoy[slots] = False
         self.queries[0, slots, 0] = self.frames
         self.queries[0, slots, 1:] = to_model(xy.float(), height, width)
         self.used[slots] = True
 
     def free(self, slots: torch.Tensor):
-        """``slots`` become free: queries of the future again, their states the never-used slot's."""
+        """``slots`` become free: queries of the future again (their states the never-used slot's), or decoys."""
         self.used[slots] = False
-        if self.state is not None:
-            for cache in self.state.hidden_state:
-                for s in (cache.rg_lru_state, cache.conv1d_state):
-                    s[self._patches + slots] = s[self._patches + self.slots].clone()
+        self._reset(slots)
+        if self.decoys:
+            self._place(slots)
 
     def step(self, frame: torch.Tensor):
         """The next frame (``prepare``'s) -> each slot's position (slots + 1, 2) model [y, x] and visibility; free
         slots' are meaningless."""
-        free = ~self.used
-        self.queries[0, free, 0] = self.frames + 1  # not yet
-        self.queries[0, free, 1:] = MODEL / 2
+        future = ~self.used & ~self.decoy
+        self.queries[0, future, 0] = self.frames + 1  # not yet
+        self.queries[0, future, 1:] = MODEL / 2
         tracks, visible, self.state = self.net.forward(frame, self.queries, self.state)
         if self._patches is None:
             self._patches = self.state.hidden_state[0].rg_lru_state.shape[0] - self.queries.shape[1]
         self.frames += 1
+        if self.decoys and self.frames % DECOY_REFRESH == 0:
+            self._place(torch.nonzero(self.decoy & ~visible).flatten())
         return tracks, visible
 
 

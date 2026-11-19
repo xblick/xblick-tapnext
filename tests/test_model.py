@@ -82,3 +82,23 @@ def test_a_catchup_over_every_second_frame_ends_where_the_full_one_does(net):
     expected = late + torch.tensor([STEP * 20, 0.0], device="cuda")
     assert full_visible.all() and half_visible.all()
     assert (full - expected).norm(dim=1).max() < 1.5 and (half - expected).norm(dim=1).max() < 1.5
+
+
+def test_decoys_fill_free_slots_and_leave_the_tracks_as_they_are(net):
+    network, resolution = net
+    video = frames(25)
+    tracker = SlotTracker(network, resolution, 256, torch.device("cuda"), decoys=True)
+    assert bool(tracker.decoy[:256].all()) and not bool(tracker.decoy[256]) and not bool(tracker.used.any())
+    start = torch.tensor([[100.0, 60.0], [150.0, 120.0], [200.0, 180.0]], device="cuda")
+    for i, rgb in enumerate(video):
+        f = tracker.prepare(rgb)
+        if i == 2:  # into decoy slots: they become tracks
+            tracker.add(torch.tensor([5, 6, 7], device="cuda"), start, H, W)
+            assert not bool(tracker.decoy[5:8].any()) and bool(tracker.used[5:8].all())
+        if i == 12:
+            tracker.free(torch.tensor([7], device="cuda"))
+            assert bool(tracker.decoy[7]) and not bool(tracker.used[7])
+        yx, visible = tracker.step(f)
+    xy = to_pixels(yx, H, W)
+    expected = start[:2] + torch.tensor([STEP * 22, 0.0], device="cuda")
+    assert visible[5:7].all() and (xy[5:7] - expected).norm(dim=1).max() < 1.5
