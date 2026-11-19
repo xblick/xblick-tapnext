@@ -28,25 +28,73 @@ Details: [docs/tracks.md](docs/tracks.md).
 
 ## Requirements
 
-- An NVIDIA GPU with CUDA. The node needs about 1.7 GB of VRAM with the checkpoint 256 and 2.6 GB with 512.
-- Durchblick's Python package `xblick` 0.5 or newer, below 0.6. The setup script installs it from source.
-- [uv](https://docs.astral.sh/uv/) and git.
+- Linux on x86-64 and an NVIDIA GPU with driver 580 or newer (PyTorch for CUDA 13). The node needs about 1.7 GB
+  of VRAM with the checkpoint 256 and 2.6 GB with 512.
+- Durchblick's Python package `xblick` 0.5 or newer, below 0.6. The setup script installs it from PyPI.
+- git and [uv](https://docs.astral.sh/uv/). Step 1 of the installation installs them.
+- About 6 GB of disk for `.venv` and 5 GB for the checkpoints.
 - A [xblick-sam3](https://github.com/xblick/xblick-sam3) instance on the same camera, unless
   you give all points by hand.
 - DeepMind's tapnet code and the TAPNext++ checkpoints are under Apache 2.0.
 
 ## Install
 
-Clone this repository and run the setup script.
+1. Install the prerequisites. `nvidia-smi` prints the GPU and the driver version, which must be 580 or newer. On
+   Ubuntu, `sudo apt install nvidia-driver-580` and a restart install that driver. After the installation of uv, open
+   a new terminal, so that `uv` is on `PATH`.
 
-```bash
-tools/setup.sh
-```
+   ```bash
+   nvidia-smi
+   sudo apt install git
+   wget -qO- https://astral.sh/uv/install.sh | sh
+   ```
 
-The script does three things. It fetches DeepMind's tapnet as a git submodule. It creates `.venv` exactly as
-`uv.lock` fixes it, with PyTorch for CUDA 13. It runs `xblick-tapnext --download-only` for the two TAPNext++
-checkpoints (256 and 512, 2.5 GB each), which downloads them into `~/.cache/xblick/tapnext/` and checks their SHA-256. A second call
-does only what changed. The node then works offline.
+2. Clone this repository with its submodule, DeepMind's tapnet:
+
+   ```bash
+   git clone --recurse-submodules https://github.com/xblick/xblick-tapnext.git
+   cd xblick-tapnext
+   ```
+
+3. Run the setup script. It fetches tapnet, creates `.venv` exactly as `uv.lock` fixes it, with Python 3.12 and
+   PyTorch for CUDA 13 (about 3 GB to download, 6 GB on disk), and downloads the two TAPNext++ checkpoints 256 and
+   512 (2.5 GB each) into `~/.cache/xblick/tapnext/`. It prints the licence of each part before its download and the
+   progress of each download. When git or uv is missing, it stops and prints the command that installs it. A second
+   call does only what changed, and after it the node needs no network. `tools/setup.sh --help` describes it.
+
+   ```bash
+   tools/setup.sh
+   ```
+
+4. Install the core's command `xblick` with the viewer and video files. uv puts it on `PATH`.
+
+   ```bash
+   uv tool install "xblick[rerun,video]>=0.5,<0.6"
+   ```
+
+5. Start the node on a video, without a camera. Any short video works, for example one from a phone. Run each
+   command in its own terminal, in the clone. If the PC already runs a Zenoh router (`xblick router` or `zenohd`),
+   leave out the first one.
+
+   ```bash
+   xblick router                                               # the Zenoh router of this PC
+   xblick play ~/Videos/clip.mp4 --camera demo/video --loop    # the video as the camera demo/video
+   .venv/bin/xblick-tapnext --camera demo/video --no-depth --no-segmenter
+   xblick rerun                                                # the viewer
+   ```
+
+   When the node prints its frames per second, give it points to follow, in pixels of the video:
+
+   ```bash
+   .venv/bin/xblick-tapnext-queries --camera demo/video --json '{"points": [[320, 240], [400, 300]]}'
+   ```
+
+   The viewer shows the video with a coloured dot on each point. The dots move with the surface they lie on. A
+   point that the tracker loses, for example on a plain wall, ends after 6 seconds. Send new points at any time.
+   `--no-depth` tracks in 2D, and `--no-segmenter` follows only the points that you give. [Run](#run) uses a camera
+   with depth and xblick-sam3.
+
+### Downloads at the start
 
 The node itself also downloads a missing checkpoint at its start, before it loads the model. It prints the model's
 terms, the file and its size first. A preparation script downloads without a start:
