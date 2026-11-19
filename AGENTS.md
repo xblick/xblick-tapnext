@@ -64,7 +64,9 @@ tools/check_references.sh                   # no internal references (patterns i
 - **Slot trick** (`model.SlotTracker`). DeepMind's code cannot add queries to an existing state. The node keeps one
   state of `--max-tracks` slots plus one never-used sentinel slot. A free slot is fed as a query of the future ("not
   yet queried"). `add` makes it a query of the next frame. `free` copies the sentinel's RG-LRU and conv1d states into
-  it. Checked on TUM: within 0.6-1.3 px (median) of a state per point group. Never give free slots real coordinates.
+  it. Checked on TUM: within 0.6-1.3 px (median) of a state per point group. Free slots are decoys by default (real queries at points of the image, never reported; `--free-slots future`
+  restores queries of the future, which degrade the real tracks when they are many: docs/design.md). `add` resets a
+  decoy slot to the sentinel's state before it takes a point.
 - **Coordinates.** Outside: pixels with centres at integers (ROS/`camera_info` K). Model: 256 x 256 with centres at
   .5 and [y, x] order (`to_model`, `to_pixels`), whatever the checkpoint's input resolution.
 - **Late masks** (`model.Catchup`). SAM 3's result arrives frames after its frame, and a point must be queried in the

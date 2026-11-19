@@ -6,6 +6,9 @@ A cheaper catch-up of late masks, and the work it does in the status.
 
 ### Added
 
+- `--free-slots decoys|future` (default `decoys`): a free slot follows a decoy point instead of being a query of the
+  future. Many such queries degraded the real tracks: the model marked many points hidden while they were in view
+  (docs/design.md), which drove most of the seeding and so most of the catch-up.
 - `--catchup-stride` (default 2): late points catch up over every second kept frame and the frame of each result.
   A quarter fewer model steps, no loss of accuracy on TUM (docs/performance.md). `1` restores every frame.
 - `--max-catchup` (default 30 model steps): a result of an older frame seeds nothing and is counted.

@@ -183,6 +183,7 @@ The node publishes the status `tapnext` on `<camera>/diagnostics` once a second.
 | `--points-per-object` | 32 | The number of points with which the node follows an object. Live: it changes while the node runs. |
 | `--forget` | 6 | The seconds for which a track may be hidden, or its object unseen, before it ends. Live: it changes while the node runs. |
 | `--max-tracks` | 1024 | The highest number of tracks. These are the slots of the tracker. |
+| `--free-slots` | `decoys` | What a free slot of the tracker holds: `decoys`, a query at a point of the image that the node never reports, or `future`, a query that has not come yet. Many free slots of `future` degrade the tracks ([docs/design.md](design.md#the-slot-trick)). |
 | `--refill` | 0.5 | An object gets new points when fewer than this share of `--points-per-object` of its tracks are visible inside its mask. Adopted tracks count. Live: it changes while the node runs. |
 | `--catchup-stride` | 2 | Late points catch up over every n-th kept frame and over the frame of each result. `1` takes every frame. Live: it changes while the node runs. |
 | `--max-catchup` | 30 | The most model steps of a catch-up. A result of an older frame seeds nothing and is counted. `0`: no bound. Live: it changes while the node runs. |

@@ -25,14 +25,25 @@ model learned in training. A point that is queried in a later frame is an "unkno
 
 | Slot | What the node feeds the model |
 | --- | --- |
-| free | a query of the future, which the model treats as "not yet queried" |
-| new point | a query in the next frame |
-| ended track | the state of a slot that was never used |
+| free | a decoy: a query at a point of the image that the node never reports (`--free-slots decoys`, the default), or a query of the future, which the model treats as "not yet queried" (`--free-slots future`) |
+| new point | a query in the next frame, in a slot reset to the state of a slot that was never used |
+| ended track | the state of a slot that was never used, then a new decoy |
 
-For the last row, the node keeps one extra slot that it never uses, the *sentinel*. When a track ends,
-`SlotTracker.free` copies the RG-LRU and conv1d states of the sentinel into the slot. The slot is then free again.
+For the last two rows, the node keeps one extra slot that it never uses, the *sentinel*. When a track ends or a
+point enters a slot, `SlotTracker` copies the RG-LRU and conv1d states of the sentinel into the slot.
 
-A free slot never gets real coordinates.
+**Why decoys.** With `--free-slots future` most of the 1024 slots are identical queries of the future, and they
+degrade the real tracks. The same 64 points of TUM RGB-D, with truth from depth and the true camera poses:
+
+| Slots | Truly visible points marked hidden (300 frames) | Same, 800 frames | Points 15 px or more off (800 frames) |
+| --- | --- | --- | --- |
+| 65 | 2-5 % | 2-14 % | 0-18 % |
+| 1024, the free ones queries of the future | 7-35 % | 34-63 % | 6-45 % |
+| 1024, the free ones decoys | 0-5 % | 0-34 % | 0-24 % |
+
+The ranges span three and four start frames of the sequence. A decoy point is spread over the image (an R2 sequence).
+A decoy that the model does not see is placed anew every 30 frames (`model.DECOY_REFRESH`). Decoys cost nothing: the
+model has the same number of tokens either way.
 
 We checked the trick against DeepMind's way with one state per group of points. The positions differ by 0.6-1.3 px
 in the median. [docs/performance.md](performance.md#accuracy-against-ground-truth) has the measurement.
