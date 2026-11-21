@@ -138,9 +138,19 @@ class SlotTracker:
     def _reset(self, slots: torch.Tensor):
         """The slots' states become the never-used slot's (a query that has not come yet)."""
         if self.state is not None and len(slots):
+            rows = self._patches + slots
             for cache in self.state.hidden_state:
                 for s in (cache.rg_lru_state, cache.conv1d_state):
-                    s[self._patches + slots] = s[self._patches + self.slots].clone()
+                    s[rows] = s[self._patches + self.slots].clone()
+
+    def _reset_where(self, which: torch.Tensor):
+        """``_reset`` of the slots where ``which`` (slots + 1, bool) is set, without reading the mask on the CPU."""
+        if self.state is not None:
+            for cache in self.state.hidden_state:
+                for s in (cache.rg_lru_state, cache.conv1d_state):
+                    rows = s[self._patches:]
+                    mask = which.reshape(-1, *([1] * (s.dim() - 1)))
+                    rows.copy_(torch.where(mask, s[self._patches + self.slots], rows))
 
     def _place(self, slots: torch.Tensor):
         """Free ``slots`` follow new decoy points, queried at the next frame."""
@@ -152,9 +162,12 @@ class SlotTracker:
 
     def add(self, slots: torch.Tensor, xy: torch.Tensor, height: int, width: int):
         """Free ``slots`` (long) become queries of the next frame at ``xy`` (pixels of the next frame)."""
-        if bool(self.used[slots].any()) or bool((slots >= self.slots).any()):
+        if bool(((slots >= self.slots) | self.used[slots.clamp(max=self.slots)]).any()):  # one synchronisation
             raise ValueError(f"slots {slots.tolist()}: not all free")
-        self._reset(slots[self.decoy[slots]])
+        if self.decoys:  # a decoy's slot has followed its point: reset it (a mask, no synchronisation)
+            which = torch.zeros_like(self.decoy)
+            which[slots] = True
+            self._reset_where(which & self.decoy)
         self.decoy[slots] = False
         self.queries[0, slots, 0] = self.frames
         self.queries[0, slots, 1:] = to_model(xy.float(), height, width)
@@ -163,9 +176,10 @@ class SlotTracker:
     def free(self, slots: torch.Tensor):
         """``slots`` become free: queries of the future again (their states the never-used slot's), or decoys."""
         self.used[slots] = False
-        self._reset(slots)
         if self.decoys:
-            self._place(slots)
+            self._place(slots)  # resets them
+        else:
+            self._reset(slots)
 
     def step(self, frame: torch.Tensor):
         """The next frame (``prepare``'s) -> each slot's position (slots + 1, 2) model [y, x] and visibility; free

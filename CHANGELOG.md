@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `SlotTracker.free` resets a freed slot's state once (it was reset twice with decoys), and `add` reads the slots'
+  state on the CPU once (it read it twice and a decoy mask once): fewer synchronisations when many slots change.
+
 ## 0.2.6 (2026-11-19)
 
 Compiled by default, free slots that no longer degrade the tracks, a cheaper catch-up of late masks, and its work in
