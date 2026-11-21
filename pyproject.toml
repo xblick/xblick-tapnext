@@ -1,6 +1,6 @@
 [project]
 name = "xblick-tapnext"
-version = "0.2.6"
+version = "0.2.7"
 description = "TAPNext++ (DeepMind's online point tracker) as a Durchblick node: points of SAM 3's objects followed in 2D and 3D"
 readme = "README.md"
 license = "Apache-2.0"

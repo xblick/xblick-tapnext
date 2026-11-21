@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.7 (2026-11-21)
+
+Fewer synchronisations when slots are freed and filled.
 
 ### Changed
 
 - `SlotTracker.free` resets a freed slot's state once (it was reset twice with decoys), and `add` reads the slots'
   state on the CPU once (it read it twice and a decoy mask once): fewer synchronisations when many slots change.
+
+No option, topic or message changes against 0.2.6.
 
 ## 0.2.6 (2026-11-19)
 

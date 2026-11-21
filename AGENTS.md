@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.4, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.7, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
