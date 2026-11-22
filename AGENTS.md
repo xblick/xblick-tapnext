@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.7, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.8, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
@@ -70,6 +70,12 @@ tools/check_references.sh                   # no internal references (patterns i
   decoy slot to the sentinel's state before it takes a point.
 - **Coordinates.** Outside: pixels with centres at integers (ROS/`camera_info` K). Model: 256 x 256 with centres at
   .5 and [y, x] order (`to_model`, `to_pixels`), whatever the checkpoint's input resolution.
+- **Several trackers in one pass** (`model.SlotTrackers`, for programs with one tracker per image window; the node
+  itself has one tracker). A tracker in its first frame gets a pass of its own (the RG-LRU's first frame is
+  batch-wide). Compiled, the batch-first attention input made one small matrix product per token: `model.load` wraps
+  each attention (`_TokensFirst`) so that its input is laid out tokens first; a model loaded otherwise keeps that
+  slow path. `warm_up(batch=N)` raises dynamo's limit of graphs per function (8) to `RECOMPILE_LIMIT`: beyond the
+  limit dynamo runs the model uncompiled without an error.
 - **Late masks** (`model.Catchup`). SAM 3's result arrives frames after its frame, and a point must be queried in the
   frame it is on. New points are followed from their frame to the newest in a state of their own (frames kept by
   `--history`, 60), batched per frame, then enter the tracker as points of the newest frame. Points hidden there
@@ -109,7 +115,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | Path | Content |
 | --- | --- |
 | `src/xblick_tapnext/weights.py` | `CHECKPOINTS`, `needed`, `STORE` (the core's `xblick.weights.Store`: the download, `--download-only`/`--no-download`) |
-| `src/xblick_tapnext/model.py` | `load`, `SlotTracker`, `Catchup`, coordinate conversion |
+| `src/xblick_tapnext/model.py` | `load`, `SlotTracker`, `SlotTrackers`, `Catchup`, coordinate conversion |
 | `src/xblick_tapnext/tracks.py` | `Tracks`: ids, ending, drift, adoption, surplus |
 | `src/xblick_tapnext/seeding.py` | points spread inside a mask, `--margin` from its edge |
 | `src/xblick_tapnext/lifting.py` | `Lifter`: pixels + depth -> metres in the optical frame |

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.8 (2026-11-22)
+
+Several slot trackers in one network pass.
+
+### Added
+
+- `model.SlotTrackers`: steps several `SlotTracker`s of one network, each on a frame of its own (a window of the
+  image, say), in one pass. Each tracker gives what it gives alone, up to float16 rounding (docs/design.md, "Several
+  trackers in one pass"). Compiled, four trackers of 64 slots take 12.9 ms in one pass against 20.1 ms one after
+  the other (docs/performance.md).
+- `warm_up(..., batch=N)` also compiles the shapes of 1 to N trackers stepped together, and raises dynamo's limit of
+  graphs per function to 32 for them.
+
+### Changed
+
+- `model.load` wraps each attention of the network: with several frames in a batch, it gets its input laid out
+  tokens first in memory. Compiled, the batch-first layout made one small matrix product per token. One frame passes
+  unchanged.
+- `warm_up` steps the tracker on a frame with `prepare`'s memory layout, so the first real frame compiles nothing more.
+
+No option, topic or message changes against 0.2.7.
+
 ## 0.2.7 (2026-11-21)
 
 Fewer synchronisations when slots are freed and filled.

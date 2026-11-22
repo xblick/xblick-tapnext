@@ -46,6 +46,24 @@ A *slot* is the place of one track in the model state. `--max-tracks` sets the n
 
 The slots cost little.
 
+### Several trackers in one pass
+
+Trackers of 64 slots, each on a frame of its own, compiled, one after the other (`SlotTracker.step` each) and in one
+pass (`SlotTrackers.step`). Median ms per step of all trackers; RTX PRO 6000 Blackwell, no other job on the GPU, load
+average 17 of 64 CPUs, 2026-11-22.
+
+| Trackers | One after the other | In one pass |
+| --- | --- | --- |
+| 1 | 5.1 | 5.4 |
+| 2 | 10.1 | 7.7 |
+| 3 | 15.1 | 9.0 |
+| 4 | 20.1 | 12.9 |
+| 5 | 25.0 | 13.6 |
+
+A step costs about 5 ms per tracker on its own and about 2 ms per further tracker in one pass. Most of a step is the
+model's work on the 1024 patches of each frame, which grows with the number of frames; the pass saves the launches
+and the reading of the weights. [docs/design.md](design.md#several-trackers-in-one-pass) explains the batch.
+
 ### The cost of seeding
 
 New points catch up from the frame of their mask to the newest frame. This adds one model step per kept frame
