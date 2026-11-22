@@ -48,6 +48,32 @@ model has the same number of tokens either way.
 We checked the trick against DeepMind's way with one state per group of points. The positions differ by 0.6-1.3 px
 in the median. [docs/performance.md](performance.md#accuracy-against-ground-truth) has the measurement.
 
+## Several trackers in one pass
+
+A program that tracks several image windows, one tracker per window (one per object, each a window
+around it), would run the model once per window. `model.SlotTrackers` steps such trackers in one pass: their frames
+and queries are one batch, and each tracker's state is its part of the batch's state. The model keeps the batch's
+frames apart (the recurrent units work per token, the attention within a frame), so each tracker gives what it gives
+alone, up to float16 rounding: within 0.006 px in `tests/test_model.py`.
+
+- Each tracker keeps its slots, queries, decoys and frame count. `add`, `free` and `SlotTracker.step` work on it as
+  before.
+- The RG-LRU treats a state's first frame apart from the later ones, for the whole batch. A tracker in its first
+  frame therefore goes through a pass of its own, once.
+- Each tracker's queries are in its own frames. The batch's state is passed at step 0, and each tracker's queries are
+  shifted by its own step.
+- When the next step has the same trackers in the same order, the batch's state is passed on as it is. Otherwise the
+  trackers' states are concatenated, about 0.1 GB per tracker of 64 slots.
+
+Compiled, a batch of two frames first took three times as long as two frames one after the other. torchvision's
+attention turns its input to (tokens, batch, channels) before the projection, and the compiler made of that view one
+small matrix product per token, reading the weights for each: 0.65 ms per layer. `model.load` therefore wraps each
+attention (`_TokensFirst`): with several frames, it hands the attention its input laid out tokens first in memory, so
+the view is contiguous and the projection one product. The numbers are the same; one frame passes unchanged.
+`warm_up(..., batch=N)` compiles the batched shapes, which need more graphs than dynamo's limit of 8 per function
+(beyond it, dynamo would run the model uncompiled), so it raises the limit to `RECOMPILE_LIMIT` (32). The time per
+pass: [docs/performance.md](performance.md#several-trackers-in-one-pass).
+
 ## Late masks and the catch-up
 
 A result of xblick-sam3 arrives some frames after its colour frame. A point must be queried in the frame in
@@ -171,7 +197,7 @@ tapnet package, and it copies nothing from tapnet.
 | `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Adoption of unclaimed tracks, `--refill`, the catch-up plan (`--max-catchup`, `--catchup-stride`). Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
 | `tests/test_weights.py` | CPU, a local HTTP server | the checkpoints, their URLs and SHA-256, `--checkpoint 512` and a file of one's own, the node's `STORE`, `--download-only` and `--no-download`, a start that stops after its weights step without a GPU. The download itself: the core's tests |
 | `tests/test_node.py` | a GPU and the checkpoint | The queryable answers while the model works. The node compiles by default, says so, and a failed compilation ends it with one line. |
-| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. A catch-up over every second frame against one over every frame. Decoys in free slots. |
+| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. A catch-up over every second frame against one over every frame. Decoys in free slots. Trackers stepped together against each alone, eager and compiled; after `warm_up(batch=3)` nothing compiles again. |
 
 ## Status and limits
 
