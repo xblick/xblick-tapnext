@@ -74,6 +74,51 @@ the view is contiguous and the projection one product. The numbers are the same;
 (beyond it, dynamo would run the model uncompiled), so it raises the limit to `RECOMPILE_LIMIT` (32). The time per
 pass: [docs/performance.md](performance.md#several-trackers-in-one-pass).
 
+## Steps that wait for nothing
+
+A copy of a number from the CPU to the GPU (`torch.tensor(..., device=)`, `x[idx] = 1`) and a read of a mask's count
+(`x[mask] = ...`) make the CPU wait until the GPU has done all work queued before it. A program that prepares its
+next work while the network's pass runs (xblick-engram6d computes its masks meanwhile) loses that time at each such
+wait. Since 0.2.9 the slot tracker has none:
+
+- `add`, `free` and the decoys set their values with `index_fill_` and copy their points from pinned memory
+  asynchronously (`model.to_device`).
+- The next step's queries of the free slots are set through a mask (`torch.where`), not by boolean indexing.
+- `to_model` and `to_pixels` take their scales as numbers, with the values of the float32 scale tensor of 0.2.8.
+- `SlotTrackers` copies the trackers' steps through pinned memory.
+- `read_tracks` reads the places and visibilities of several trackers in one copy (`to_host`).
+
+The queries and states are those of 0.2.8 exactly (`tests/test_slots.py` steps 0.2.8's code beside the new one).
+Two waits remain. `add` checks that its slots are free, one read-back, which fails fast on misuse: a caller that keeps
+its own list of free slots passes `check_slots=False`. The decoys that the model does not see are placed anew every
+`DECOY_REFRESH` frames, which reads their count. DeepMind's `embed_queries` copies the image size to the GPU in each
+pass when the network is not compiled; compiled, it is a constant. `tests/test_model.py` steps trackers alone and
+together under CUDA's sync debug mode, the network's own call left out.
+
+## TensorRT engines
+
+`tensorrt.TensorRTNetwork` runs the later frames of trackers stepped together (`SlotTrackers`) in TensorRT engines
+(Torch-TensorRT, the optional dependencies `trt`). The node does not use it; xblick-engram6d does (`--compile
+tensorrt`).
+
+- **Precision.** The network is exported with PyTorch's float16 autocast in the graph, as `_Net` runs it. TensorRT 11
+  is strongly typed and takes each layer's precision from the graph. Torch-TensorRT's own float16 rules
+  (`enable_autocast`) were slower than the network not compiled.
+- **The export copy** (`tensorrt.for_export`). DeepMind's `embed_queries` repeats the 256 x 256 x 768 table of query
+  positions per batch element (0.2 GB in the engine per tracker), and Torch-TensorRT 2.14 converts no `repeat` by a
+  dynamic batch. The copy samples all queries from the one table, broadcasts instead of repeating, keeps the float16
+  weights of the layers autocast runs in float16, and leaves out `_TokensFirst`, which only lays the input out for
+  torch.compile. For one tracker it gives the network's numbers exactly (`tests/test_tensorrt.py`).
+- **Two engines per number of slots.** One for a tracker alone and one for 2 to N trackers (a dynamic batch);
+  torch.export takes a batch of one apart. A tracker's first frame and `SlotTracker.step` run in PyTorch, not
+  compiled: the RG-LRU treats a state's first frame apart.
+- **Kept on disk.** Each engine is built once and saved in the engine directory (`engine_dir`, default
+  `~/.cache/xblick/tapnext/tensorrt`), named by the checkpoint, the input, the slots, the batch sizes, the GPU's
+  compute capability and the versions of TensorRT and Torch-TensorRT. A later start loads it; loaded and built
+  engines give the same numbers. A partial file never gets the final name.
+
+Times: [docs/performance.md](performance.md#tensorrt-engines).
+
 ## Late masks and the catch-up
 
 A result of xblick-sam3 arrives some frames after its colour frame. A point must be queried in the frame in
@@ -197,7 +242,9 @@ tapnet package, and it copies nothing from tapnet.
 | `tests/test_tracks.py` | CPU | The rules of the tracks: ids, ending, drift, a slot reused since the frame of a result, the highest number per object. Adoption of unclaimed tracks, `--refill`, the catch-up plan (`--max-catchup`, `--catchup-stride`). Seeding inside the mask and spread. Lifting against OpenCV's projection with distortion. The requests of the queryable. The published layout. |
 | `tests/test_weights.py` | CPU, a local HTTP server | the checkpoints, their URLs and SHA-256, `--checkpoint 512` and a file of one's own, the node's `STORE`, `--download-only` and `--no-download`, a start that stops after its weights step without a GPU. The download itself: the core's tests |
 | `tests/test_node.py` | a GPU and the checkpoint | The queryable answers while the model works. The node compiles by default, says so, and a failed compilation ends it with one line. |
-| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. A catch-up over every second frame against one over every frame. Decoys in free slots. Trackers stepped together against each alone, eager and compiled; after `warm_up(batch=3)` nothing compiles again. |
+| `tests/test_slots.py` | CPU | `add`, `free` and `step` give 0.2.8's queries and states exactly (0.2.8's code beside the new one, with and without decoys and the check of the slots). A used slot raises. `to_model` and `to_pixels` give 0.2.8's values. `to_host` and `read_tracks`. |
+| `tests/test_model.py` | a GPU and the checkpoint in the cache directory | Points on a texture that moves 2 px per frame. Points added late. A reused slot. The catch-up against the working state. A catch-up over every second frame against one over every frame. Decoys in free slots. Trackers stepped together against each alone, eager and compiled; after `warm_up(batch=3)` nothing compiles again. Later steps alone and together without a synchronisation. |
+| `tests/test_tensorrt.py` | a GPU, the checkpoint and the optional dependencies `trt` (skipped without) | The export copy gives the network's numbers. Trackers in the engines (one and three together) follow the texture within 0.5 px of PyTorch. Engines loaded from their directory give what the built ones gave. A batch without an engine raises. |
 
 ## Status and limits
 

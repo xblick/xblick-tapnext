@@ -192,3 +192,51 @@ def test_compiled_trackers_together_after_the_warm_up_compile_nothing_more(net):
             worst = max(worst, float((to_pixels(yx[:3], H, W) - to_pixels(together[k][0][:3], H, W)).norm(dim=1).max()))
     assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
     assert worst < 0.05
+
+
+def test_steps_with_the_check_left_to_the_caller_wait_for_nothing(net):
+    """Later frames of a SlotTracker and of SlotTrackers, with adds (``check_slots=False``) and frees between them
+    (not at a decoy refresh), queue all their work without a synchronisation (CUDA's sync debug mode raises on
+    one). The network's own call is left out: DeepMind's embed_queries copies the image size to the GPU in each pass
+    when it is not compiled."""
+    network, resolution = net
+    device = torch.device("cuda")
+
+    class Unchecked:
+        """The network, called with the sync debug mode off."""
+
+        def __call__(self, **kwargs):
+            mode = torch.cuda.get_sync_debug_mode()
+            torch.cuda.set_sync_debug_mode("default")
+            try:
+                return inner(**kwargs)
+            finally:
+                torch.cuda.set_sync_debug_mode(mode)
+
+    inner, network = network, Unchecked()
+    video = frames(8)
+    start = torch.tensor([[100.0, 60.0], [150.0, 120.0], [200.0, 180.0]], device="cuda")
+    alone = SlotTracker(network, resolution, 16, device, decoys=True, check_slots=False)
+    pair = [SlotTracker(network, resolution, 16, device, decoys=True, check_slots=False) for _ in range(2)]
+    batch = SlotTrackers()
+    prepared = [alone.prepare(rgb) for rgb in video]
+    for t in [alone, *pair]:  # first frames: the state starts (not part of the check)
+        t.add(torch.arange(3, device="cuda"), start, H, W)
+    alone.step(prepared[0])
+    batch.step(pair, prepared[:2])
+    batch.step(pair, prepared[1:3])  # the batch's state kept from here on
+    torch.cuda.synchronize()
+    slots, late = torch.tensor([5, 6], device="cuda"), start[:2] + 3.0
+    torch.cuda.set_sync_debug_mode("error")
+    try:
+        for i in range(3, 8):
+            if i == 4:
+                for t in [alone, *pair]:
+                    t.add(slots, late, H, W)
+            if i == 6:
+                for t in [alone, *pair]:
+                    t.free(slots[:1])
+            alone.step(prepared[i])
+            batch.step(pair, [prepared[i], prepared[i - 1]])
+    finally:
+        torch.cuda.set_sync_debug_mode("default")

@@ -64,6 +64,22 @@ A step costs about 5 ms per tracker on its own and about 2 ms per further tracke
 model's work on the 1024 patches of each frame, which grows with the number of frames; the pass saves the launches
 and the reading of the weights. [docs/design.md](design.md#several-trackers-in-one-pass) explains the batch.
 
+### TensorRT engines
+
+The network alone in `SlotTrackers` of 64 slots on xblick-engram6d's windows of a 1280 x 720 recording (four objects),
+median ms of a pass, measured in xblick-engram6d 0.2.6 with the code that is `tensorrt.py` now (2026-11-26, load
+average about 25, no other job on the GPU):
+
+| Trackers | compiled (`torch.compile`) | TensorRT | not compiled |
+| --- | --- | --- | --- |
+| 1 | 6.0 | 3.4 | 12.3 |
+| 2 / 3 / 5 | | 6.6 / 8.4 / 12.8 | |
+| 4 | 11.9 | 10.0 | 20.4 |
+
+Both engines (one tracker, 2 to 5 trackers) take 89 s to build and 24 s to load; on disk 0.9 and 1.3 GB. In
+xblick-engram6d's benchmark the engines tracked as well as the compiled network with the simulator's exact
+depth and worse with stereo depth; xblick-engram6d's docs/experiments.md has the numbers.
+
 ### The cost of seeding
 
 New points catch up from the frame of their mask to the newest frame. This adds one model step per kept frame

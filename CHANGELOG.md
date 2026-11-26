@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.9 (2026-11-26)
+
+Slot trackers whose steps wait for nothing, and TensorRT engines for trackers stepped together.
+
+### Added
+
+- `SlotTracker(..., check_slots=False)`: `add` leaves its check of the slots to the caller, so that nothing in a step
+  waits for the GPU.
+- `model.read_tracks`: several trackers' places and visibilities read back in one copy; `model.to_host` and
+  `model.to_device` (pinned, asynchronous) for other small copies.
+- `tensorrt.TensorRTNetwork` (optional dependencies `trt`, `tools/setup.sh --trt`): the later frames of trackers
+  stepped together in TensorRT engines, built once and kept in an engine directory (default
+  `~/.cache/xblick/tapnext/tensorrt`). Four trackers of 64 slots: 10.0 ms a pass against 11.9 ms compiled.
+
+### Changed
+
+- `add`, `free`, the decoys and `SlotTrackers` no longer copy numbers to the GPU or read a mask's count back. The
+  queries and states are 0.2.8's exactly.
+- `to_model` and `to_pixels` take their scales as numbers (the same values) and any shape `(..., 2)`.
+
+No option, topic or message changes against 0.2.8. docs/design.md, "Steps that wait for nothing" and "TensorRT
+engines".
+
 ## 0.2.8 (2026-11-22)
 
 Several slot trackers in one network pass.

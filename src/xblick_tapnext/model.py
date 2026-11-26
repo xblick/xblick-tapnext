@@ -26,6 +26,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -115,16 +116,62 @@ class _Net:
         return tracks[:, 0].float(), visible_logits[:, 0, :, 0].float() > 0, state
 
 
-def to_model(xy: torch.Tensor, height: int, width: int) -> torch.Tensor:
-    """(N, 2) pixels [x, y] (centres at integers) -> (N, 2) model [y, x] (centres at .5)."""
-    scale = torch.tensor([MODEL / width, MODEL / height], device=xy.device)
-    return ((xy + 0.5) * scale).flip(-1)
+def _scale(size: float) -> float:
+    """MODEL / size or size / MODEL as float32 rounds it: the value a float32 scale tensor had (0.2.8 and older)."""
+    return float(np.float32(size))
 
 
-def to_pixels(yx: torch.Tensor, height: int, width: int) -> torch.Tensor:
-    """(N, 2) model [y, x] -> (N, 2) pixels [x, y]."""
-    scale = torch.tensor([width / MODEL, height / MODEL], device=yx.device)
-    return yx.flip(-1) * scale - 0.5
+def to_model(xy: torch.Tensor, height: float, width: float) -> torch.Tensor:
+    """(..., 2) pixels [x, y] (centres at integers) -> (..., 2) model [y, x] (centres at .5). The scales are numbers,
+    not a tensor copied to the GPU (such a copy waits for the GPU's queued work); the values and the dtype are those
+    of a float32 scale tensor."""
+    xy = xy.to(torch.promote_types(xy.dtype, torch.float32))
+    return torch.stack([(xy[..., 1] + 0.5) * _scale(MODEL / height), (xy[..., 0] + 0.5) * _scale(MODEL / width)], -1)
+
+
+def to_pixels(yx: torch.Tensor, height: float, width: float) -> torch.Tensor:
+    """(..., 2) model [y, x] -> (..., 2) pixels [x, y] (as ``to_model``, without a copy to the GPU)."""
+    yx = yx.to(torch.promote_types(yx.dtype, torch.float32))
+    return torch.stack([yx[..., 1] * _scale(width / MODEL), yx[..., 0] * _scale(height / MODEL)], -1) - 0.5
+
+
+def to_device(values, dtype: torch.dtype, device) -> torch.Tensor:
+    """A small host array (list, numpy, CPU tensor) on ``device`` without waiting for the GPU. A plain copy
+    (``torch.tensor(..., device=)``, ``torch.as_tensor``) waits until the GPU has done all work queued before it, so
+    the CPU could not prepare the next work while a pass runs. Copied from pinned memory, asynchronously; the same
+    values."""
+    device = torch.device(device)
+    t = torch.as_tensor(values, dtype=dtype)
+    if device.type != "cuda":
+        return t.to(device)
+    return t.pin_memory().to(device, non_blocking=True)
+
+
+def to_host(parts: list[torch.Tensor]) -> list[np.ndarray]:
+    """Several tensors of one dtype read to the host in one copy (each copy to the host waits for the GPU): the
+    arrays in their shapes and order."""
+    if not parts:
+        return []
+    if len({p.dtype for p in parts}) != 1:
+        raise ValueError(f"to_host: one dtype for all parts, got {sorted({str(p.dtype) for p in parts})}")
+    flat = torch.cat([p.reshape(-1) for p in parts]).cpu().numpy()
+    out, start = [], 0
+    for p in parts:
+        out.append(flat[start:start + p.numel()].reshape(tuple(p.shape)))
+        start += p.numel()
+    return out
+
+
+def read_tracks(results: list[tuple[torch.Tensor, torch.Tensor]],
+                sizes: list[tuple[float, float]]) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Steps' results (``SlotTracker.step``'s or ``SlotTrackers.step``'s (places model [y, x], visibility)) of
+    trackers whose frames have the (height, width) of ``sizes`` -> each one's places in its frame's pixels (float64)
+    and visibility (bool), read back in one copy for all of them."""
+    if len(results) != len(sizes):
+        raise ValueError(f"read_tracks: {len(results)} results and {len(sizes)} sizes")
+    parts = [torch.cat([to_pixels(yx.float(), h, w), visible[:, None].float()], 1)
+             for (yx, visible), (h, w) in zip(results, sizes, strict=True)]
+    return [(rows[:, :2].astype(np.float64), rows[:, 2] > 0.5) for rows in to_host(parts)]
 
 
 DECOY_REFRESH = 30  # frames between re-placings of the decoys the model does not see
@@ -144,12 +191,22 @@ class SlotTracker:
     the future. Hundreds of identical future queries degrade the real tracks: on TUM RGB-D the model then marked 7-35 %
     of truly visible points hidden and lost more of them, against 2-5 % with the same points alone or among real
     queries (docs/design.md). A decoy that the model does not see is placed anew every ``DECOY_REFRESH`` frames. The
-    decoys' positions are never reported as tracks."""
+    decoys' positions are never reported as tracks.
 
-    def __init__(self, net, resolution: int, slots: int, device: torch.device, decoys: bool = False):
-        self.net = _Net(net, resolution, device)
+    Nothing in ``add``, ``free`` and ``step`` waits for the GPU (no copy of a number to it, no read of a mask's count),
+    except ``add``'s check that its slots are free (``check_slots``, one read-back) and the decoys' refresh every
+    ``DECOY_REFRESH`` frames. ``check_slots=False`` leaves the check to the caller (one that keeps its own list of
+    free slots): then a step's work can be queued while the GPU still runs the last one.
+
+    ``net`` may be a ``tensorrt.TensorRTNetwork``: the later frames of trackers stepped together (``SlotTrackers``)
+    then run in its engines."""
+
+    def __init__(self, net, resolution: int, slots: int, device: torch.device, decoys: bool = False,
+                 check_slots: bool = True):
+        self.net = net.engine_net(resolution, device) if hasattr(net, "engine_net") else _Net(net, resolution, device)
         self.slots = slots
         self.device = device
+        self.check_slots = check_slots
         self.state = None
         self.frames = 0  # frames given so far: the next frame's time
         self.queries = torch.zeros(1, slots + 1, 3, device=device)  # [t, y, x]; free slots: always the next frame + 1
@@ -182,29 +239,31 @@ class SlotTracker:
                     rows.copy_(torch.where(mask, s[self._patches + self.slots], rows))
 
     def _place(self, slots: torch.Tensor):
-        """Free ``slots`` follow new decoy points, queried at the next frame."""
+        """Free ``slots`` follow new decoy points, queried at the next frame (the points from pinned memory, the
+        values as numbers: no wait)."""
         self._reset(slots)
-        self.queries[0, slots, 0] = self.frames
-        self.queries[0, slots, 1:] = decoy_points(len(slots), self._placed).to(self.device)
+        self.queries[0, :, 0].index_fill_(0, slots, float(self.frames))
+        self.queries[0, slots, 1:] = to_device(decoy_points(len(slots), self._placed), torch.float32, self.device)
         self._placed += len(slots)
-        self.decoy[slots] = True
+        self.decoy.index_fill_(0, slots, True)
 
-    def add(self, slots: torch.Tensor, xy: torch.Tensor, height: int, width: int):
-        """Free ``slots`` (long) become queries of the next frame at ``xy`` (pixels of the next frame)."""
-        if bool(((slots >= self.slots) | self.used[slots.clamp(max=self.slots)]).any()):  # one synchronisation
+    def add(self, slots: torch.Tensor, xy: torch.Tensor, height: float, width: float):
+        """Free ``slots`` (long) become queries of the next frame at ``xy`` (pixels of the next frame). With
+        ``check_slots`` a used or out-of-range slot raises (one read-back)."""
+        if self.check_slots and bool(((slots >= self.slots) | self.used[slots.clamp(max=self.slots)]).any()):
             raise ValueError(f"slots {slots.tolist()}: not all free")
         if self.decoys:  # a decoy's slot has followed its point: reset it (a mask, no synchronisation)
-            which = torch.zeros_like(self.decoy)
-            which[slots] = True
+            which = torch.zeros_like(self.decoy).index_fill_(0, slots, True)
             self._reset_where(which & self.decoy)
-        self.decoy[slots] = False
-        self.queries[0, slots, 0] = self.frames
+        # index_fill_ takes the value as a number; x[slots] = value would copy it to the GPU (and wait)
+        self.decoy.index_fill_(0, slots, False)
+        self.queries[0, :, 0].index_fill_(0, slots, float(self.frames))
         self.queries[0, slots, 1:] = to_model(xy.float(), height, width)
-        self.used[slots] = True
+        self.used.index_fill_(0, slots, True)
 
     def free(self, slots: torch.Tensor):
         """``slots`` become free: queries of the future again (their states the never-used slot's), or decoys."""
-        self.used[slots] = False
+        self.used.index_fill_(0, slots, False)
         if self.decoys:
             self._place(slots)  # resets them
         else:
@@ -218,10 +277,12 @@ class SlotTracker:
         return tracks, visible
 
     def _queries(self) -> torch.Tensor:
-        """The queries of the next step, (1, slots + 1, 3) [t, y, x], t in this tracker's frames."""
+        """The queries of the next step, (1, slots + 1, 3) [t, y, x], t in this tracker's frames. Set through a mask
+        (torch.where): boolean indexing would read the mask's count back."""
         future = ~self.used & ~self.decoy
-        self.queries[0, future, 0] = self.frames + 1  # not yet
-        self.queries[0, future, 1:] = MODEL / 2
+        q = self.queries[0]
+        q[:, 0] = torch.where(future, float(self.frames + 1), q[:, 0])  # not yet
+        q[:, 1:] = torch.where(future[:, None], MODEL / 2, q[:, 1:])
         return self.queries
 
     def _stepped(self, state, visible: torch.Tensor):
@@ -274,8 +335,9 @@ class SlotTrackers:
         queries = torch.cat([t._queries() for t in trackers])
         state = None
         if not fresh:
-            # each tracker's queries are in its own frames: the batch's state is at step 0 (forward subtracts it)
-            steps = torch.tensor([t.state.step for t in trackers], device=queries.device, dtype=queries.dtype)
+            # each tracker's queries are in its own frames: the batch's state is at step 0 (forward subtracts it);
+            # the steps from pinned memory (a plain copy to the GPU would wait for it)
+            steps = to_device([t.state.step for t in trackers], queries.dtype, queries.device)
             queries = torch.cat([queries[..., :1] - steps[:, None, None], queries[..., 1:]], -1)
             if tuple(trackers) == self._trackers and all(
                     t.state is s for t, s in zip(trackers, self._states, strict=True)):

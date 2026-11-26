@@ -2,7 +2,7 @@
 
 xblick-tapnext: DeepMind's TAPNext++ online point tracker as a Durchblick node. By default it seeds 32 points on
 each object of an xblick-sam3 instance on the same camera, follows them frame by frame and lifts them to 3D with
-the camera's depth. Version 0.2.8, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
+the camera's depth. Version 0.2.9, tested on TUM RGB-D and end to end with xblick-sam3 on a replay, never on the
 robot. Human documentation: README.md (entry), docs/tracks.md (topics, track rules, queryable, options),
 docs/performance.md (speed, accuracy), docs/design.md. Style of all documentation: the core's
 docs/project/writing-docs.md. Transport-wide traps (Zenoh sessions and routers, CUDA rings, looped playback, hanging
@@ -12,6 +12,7 @@ tests): AGENTS.md of the core repository (`github.com/xblick/xblick`).
 
 ```bash
 tools/setup.sh                              # submodule, uv sync --frozen, --download-only for 256 and 512 (2.5 GB each)
+tools/setup.sh --trt                        # also the optional dependencies trt (Torch-TensorRT, 3.6 GB) for tensorrt.py
 .venv/bin/python -m pytest -q               # test_model.py needs a CUDA device and the checkpoints in ~/.cache/xblick/tapnext
 .venv/bin/python -m pytest -q tests/test_weights.py  # CPU, 4 s: the node's files and its start up to the weights (the download: the core's tests)
 .venv/bin/xblick-tapnext --download-only --checkpoint 256   # the checkpoint if missing, SHA-256 checked, exit 0
@@ -76,6 +77,14 @@ tools/check_references.sh                   # no internal references (patterns i
   each attention (`_TokensFirst`) so that its input is laid out tokens first; a model loaded otherwise keeps that
   slow path. `warm_up(batch=N)` raises dynamo's limit of graphs per function (8) to `RECOMPILE_LIMIT`: beyond the
   limit dynamo runs the model uncompiled without an error.
+- **Waits for the GPU** (0.2.9). In `SlotTracker` and `SlotTrackers` never copy a number to the GPU
+  (`torch.tensor(..., device=)`, `x[idx] = 1`) or index by a mask (`x[mask] = ...`): each waits for all queued work.
+  Use `index_fill_`, `torch.where`, `to_device` (pinned). `tests/test_slots.py` checks that the queries and states
+  stay 0.2.8's; `test_model.py` checks for waits under CUDA's sync debug mode.
+- **TensorRT** (`tensorrt.py`, extra `trt` pinned to the PyTorch line of uv.lock: an unpinned torch-tensorrt moves
+  torch to its newest line). Torch-TensorRT needs a device with an index (`cuda` becomes `cuda:N`). It converts no
+  `repeat` by a dynamic batch (`for_export` broadcasts), and torch.export takes a batch of one apart (one engine for
+  one tracker, one for 2 to N).
 - **Late masks** (`model.Catchup`). SAM 3's result arrives frames after its frame, and a point must be queried in the
   frame it is on. New points are followed from their frame to the newest in a state of their own (frames kept by
   `--history`, 60), batched per frame, then enter the tracker as points of the newest frame. Points hidden there
@@ -115,7 +124,8 @@ tools/check_references.sh                   # no internal references (patterns i
 | Path | Content |
 | --- | --- |
 | `src/xblick_tapnext/weights.py` | `CHECKPOINTS`, `needed`, `STORE` (the core's `xblick.weights.Store`: the download, `--download-only`/`--no-download`) |
-| `src/xblick_tapnext/model.py` | `load`, `SlotTracker`, `SlotTrackers`, `Catchup`, coordinate conversion |
+| `src/xblick_tapnext/model.py` | `load`, `SlotTracker`, `SlotTrackers`, `Catchup`, coordinate conversion, `to_device`, `to_host`, `read_tracks` |
+| `src/xblick_tapnext/tensorrt.py` | `TensorRTNetwork` (engines for trackers stepped together), `for_export`, `default_engine_dir` |
 | `src/xblick_tapnext/tracks.py` | `Tracks`: ids, ending, drift, adoption, surplus |
 | `src/xblick_tapnext/seeding.py` | points spread inside a mask, `--margin` from its edge |
 | `src/xblick_tapnext/lifting.py` | `Lifter`: pixels + depth -> metres in the optical frame |
@@ -123,7 +133,7 @@ tools/check_references.sh                   # no internal references (patterns i
 | `src/xblick_tapnext/node.py` | the node: inputs, frame loop, seeding, publishing, diagnostics |
 | `third_party/tapnet` | DeepMind's tapnet (submodule) |
 | `~/.cache/xblick/tapnext/` | `tapnextpp_ckpt.pt` (256), `tapnextpp_512.ckpt` (downloaded by the node), `.download.lock`: the node's cache directory. The checkout's `weights/` is the former place. |
-| `tests/` | `test_tracks.py`, `test_weights.py` (CPU), `test_model.py`, `test_node.py` (GPU; `slow_step.py` slows the tracker for it) |
+| `tests/` | `test_tracks.py`, `test_weights.py`, `test_slots.py` (CPU), `test_model.py`, `test_node.py` (GPU; `slow_step.py` slows the tracker for it), `test_tensorrt.py` (GPU and extra `trt`) |
 | `docs/` | tracks, performance, design |
 
 ## Defaults

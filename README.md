@@ -187,7 +187,9 @@ The measurements and the method: [docs/performance.md](docs/performance.md).
 
 - [docs/tracks.md](docs/tracks.md): inputs, the cloud layout, how tracks begin and end, the queryable, all options.
 - [docs/performance.md](docs/performance.md): speed and accuracy, with setup and method.
-- [docs/design.md](docs/design.md): how the node adds points to a working tracker, the decisions, the tests.
+- [docs/design.md](docs/design.md): how the node adds points to a working tracker, the decisions, the tests. For
+  programs that use the tracker: several trackers in one pass (`SlotTrackers`), steps that wait for nothing
+  (`check_slots=False`, `read_tracks`), and TensorRT engines for them (`tensorrt.py`, `tools/setup.sh --trt`).
 - Durchblick: [Point clouds](https://github.com/xblick/xblick/blob/main/docs/guides/point-clouds.md), [Pairing streams](https://github.com/xblick/xblick/blob/main/docs/guides/pairing-streams.md),
   [Timestamps](https://github.com/xblick/xblick/blob/main/docs/concepts/timestamps.md), [Transports](https://github.com/xblick/xblick/blob/main/docs/concepts/transports.md).
 

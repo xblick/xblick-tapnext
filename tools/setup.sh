@@ -7,7 +7,10 @@
 #   512, 2.5 GB each, from DeepMind's storage; each checked against its SHA-256, downloaded only if missing). The node
 #   downloads the one it needs at its start too.
 #
-#     tools/setup.sh
+#     tools/setup.sh [--trt]
+#
+# --trt also installs the optional dependencies trt (Torch-TensorRT and TensorRT, about 3.6 GB) for
+# xblick_tapnext.tensorrt (the node itself does not use them).
 #
 # Needs uv (UV names it, default uv on PATH) and git: without them it stops with the command that installs them.
 # Without an NVIDIA GPU with driver 580 or newer (CUDA 13) it says so and goes on: the node needs one to start,
@@ -20,7 +23,7 @@ MIN_DRIVER=580  # NVIDIA's minimum Linux driver for CUDA 13.0, which the cu130 t
 
 usage() {
     cat <<'EOF'
-Usage: tools/setup.sh
+Usage: tools/setup.sh [--trt]
 
 Sets xblick-tapnext up in this clone, or updates it. It fetches DeepMind's tapnet code (the submodule
 third_party/tapnet), creates .venv exactly as uv.lock fixes it (Python 3.12, PyTorch for CUDA 13, the core xblick
@@ -29,6 +32,8 @@ from PyPI) and downloads the TAPNext++ checkpoints 256 and 512 into the node's c
 
 Needs git and uv (UV=/path/to/uv names another uv). The node needs an NVIDIA GPU with driver 580 or newer.
 
+  --trt       also the optional dependencies trt (Torch-TensorRT and TensorRT, about 3.6 GB installed) for
+              xblick_tapnext.tensorrt: TensorRT engines for slot trackers stepped together (the node does not use them)
   -h, --help  this text
 EOF
 }
@@ -38,8 +43,10 @@ die() {
     exit 1
 }
 
+TRT=0
 for arg in "$@"; do
     case $arg in
+        --trt) TRT=1 ;;
         -h | --help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $arg" ;;
     esac
@@ -82,7 +89,11 @@ $PROG: setting up $PWD. It downloads what is missing of:
   * the TAPNext++ checkpoints 256 and 512 (2.5 GB each, Apache License 2.0) into the node's cache directory
 EOF
 git submodule update --init third_party/tapnet
-"$UV" sync --frozen
+if ((TRT)); then
+    "$UV" sync --frozen --extra trt
+else
+    "$UV" sync --frozen
+fi
 .venv/bin/xblick-tapnext --download-only --checkpoint 256
 .venv/bin/xblick-tapnext --download-only --checkpoint 512
 echo "$PROG: set up. The first start: README.md, Install, step 5."
